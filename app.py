@@ -5021,7 +5021,8 @@ def on_pipeline_export_json(state):
             }
             records.append(record)
         
-        # Use default=str to safely serialize datetime/non-serializable objects
+        # Use default=str for safe serialization of any datetime/non-JSON-serializable objects
+        # Card fields are primarily strings/bools; default=str handles edge cases safely
         json_data = json.dumps(records, indent=2, default=str)
         json_bytes = json_data.encode("utf-8")
         
@@ -5222,7 +5223,8 @@ def on_audit_export_json(state):
     try:
         # Convert DataFrame to list of dicts, handling datetime serialization
         records = state.audit_table.to_dict(orient="records")
-        # Use default=str to safely serialize any datetime/non-serializable objects
+        # Use default=str for safe serialization of any datetime/non-JSON-serializable objects
+        # Audit table primarily contains strings; default=str is sufficient for edge cases
         json_data = json.dumps(records, indent=2, default=str)
         json_bytes = json_data.encode("utf-8")
         

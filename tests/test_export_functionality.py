@@ -454,7 +454,7 @@ class TestExportWithLargeDatasets:
         # Create a large audit log (1000 entries)
         rows = [
             {
-                "Time": f"{i:02d}:00:00",
+                "Time": f"{(i % 24):02d}:00:00",  # Valid 24-hour format
                 "Actor": f"user{i % 10}",
                 "Action": f"action{i % 5}",
                 "Resource": f"resource/{i}",
