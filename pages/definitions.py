@@ -613,7 +613,6 @@ NLP Engine: <|{spacy_status}|text|>
 <|Anonymize|button|on_action=on_qt_anonymize|>
 <|Settings|button|on_action=on_qt_settings_open|class_name=secondary|>
 <|Load Sample|button|on_action=on_qt_load_sample|class_name=secondary|>
-<|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
 <|Clear|button|on_action=on_qt_clear|class_name=secondary|>
 |>
 
@@ -671,6 +670,10 @@ NLP Engine: <|{spacy_status}|text|>
 
 <|Saved Sessions|text|class_name=sh|>
 <|part|class_name=panel|
+<|layout|columns=5 1|gap=8px|
+<|{qt_card_f}|selector|lov={qt_card_opts}|dropdown=True|label=Attach to card (optional)|class_name=fullwidth|hover_text=Link this session to a pipeline card for traceability and auditing.|>
+<|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
+|>
 <|{qt_sessions_data}|table|columns=ID;Title;Operator;Entities;Created|show_all=False|page_size=6|filter=True|sortable=True|on_action=on_qt_session_select|>
 <|Load Session|button|on_action=on_qt_load_session|class_name=secondary|render={qt_selected_session!=""}|>
 |>
