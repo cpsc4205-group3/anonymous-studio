@@ -269,6 +269,44 @@ def test_engine_empty_text_returns_safely(engine):
     assert result.entity_counts == {}
 
 
+# ── Entity type filtering ─────────────────────────────────────────────────────
+
+def test_analyze_with_entity_subset_returns_only_selected_types(engine):
+    """When a specific entity list is provided, only those types are returned."""
+    text = "Email bob@example.com or call 555-867-5309"
+    results = engine.analyze(text, entities=["EMAIL_ADDRESS"])
+    types = {r["entity_type"] for r in results}
+    assert "EMAIL_ADDRESS" in types
+    assert "PHONE_NUMBER" not in types
+
+
+def test_analyze_default_entities_returns_all_types(engine):
+    """When no entity list is given, all supported entities are candidates."""
+    from pii_engine import ALL_ENTITIES
+    text = "Email bob@example.com or call 555-867-5309"
+    results = engine.analyze(text)
+    types = {r["entity_type"] for r in results}
+    # At least one of the two entity types must appear without restriction
+    assert types.issubset(set(ALL_ENTITIES)), "Returned types must all be in ALL_ENTITIES"
+    assert len(types) >= 1
+
+
+def test_analyze_empty_entity_list_falls_back_to_all_entities(engine):
+    """Passing None for entities falls back to the full ALL_ENTITIES catalogue."""
+    from pii_engine import ALL_ENTITIES
+    text = "Email bob@example.com"
+    results_default = engine.analyze(text)
+    results_none = engine.analyze(text, entities=None)
+    # Both should produce the same results
+    assert [r["entity_type"] for r in results_default] == [r["entity_type"] for r in results_none]
+
+
+def test_analyze_single_entity_type_excludes_others(engine):
+    """Selecting a single entity type must exclude all other detected types."""
+    text = "SSN 123-45-6789 and email test@example.com"
+    results = engine.analyze(text, entities=["US_SSN"])
+    types = {r["entity_type"] for r in results}
+    assert types <= {"US_SSN"}, f"Expected only US_SSN but got {types}"
 def test_analyze_results_contain_rationale_key(engine):
     """Every entity dict returned by analyze() must expose a 'rationale' key
     so the entity-evidence table can display detection explanations."""
