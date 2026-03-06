@@ -4321,7 +4321,8 @@ def _load_job_results(state, jid: str):
                     try:
                         cfg_data = sc.job_config.read() or {}
                     except Exception:
-                        pass
+                        # Best-effort: if job config cannot be read, continue with defaults.
+                        _log.debug("Unable to read job config for session creation", exc_info=True)
                     sample_rows: List[Dict] = []
                     if stats_data:
                         for item in (stats_data.get("sample_before") or [])[:5]:
