@@ -128,8 +128,10 @@ class TestPIISession:
         store.add_session(s)
         store.update_session(s.id, pipeline_card_id="card-xyz")
         audit = store.list_audit()
-        assert any(e.action == "session.update" and e.resource_id == s.id
-                   for e in audit)
+        matches = [e for e in audit
+                   if e.action == "session.update" and e.resource_id == s.id]
+        assert len(matches) == 1
+        assert "pipeline_card_id" in matches[0].details
 
 
 # ── PipelineCard ──────────────────────────────────────────────────────────────
