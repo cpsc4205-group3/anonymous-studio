@@ -607,6 +607,7 @@ NLP Engine: <|{spacy_status}|text|>
 <|part|class_name=panel|
 <|1. Input and Run|text|class_name=sh sh-top|>
 <|{qt_input}|input|multiline=True|lines_shown=10|label=Input text|class_name=fullwidth|>
+<|{qt_entities}|selector|lov={qt_all_entities}|multiple=True|dropdown=True|filter=True|label=Entity types to detect|class_name=fullwidth|hover_text=Select which PII entity types to look for. Default: all 17 types selected. Narrowing scope improves speed and reduces false positives.|>
 
 <|part|class_name=qt-actions|
 <|Detect PII|button|on_action=on_qt_analyze|>
