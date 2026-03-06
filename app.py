@@ -352,6 +352,8 @@ qt_last_proc_ms    = 0.0     # timing from last engine.anonymize() call
 qt_session_saved   = False
 qt_selected_session = ""   # full session ID from table selection
 qt_sessions_data   = pd.DataFrame(columns=["ID", "Title", "Operator", "Entities", "Created", "full_id"])
+qt_card_f          = ""    # pipeline card ID to attach QT session to (empty = no link)
+qt_card_opts: List[tuple] = [("(no card)", "")]  # lov for card picker in QT page
 qt_entity_chart    = pd.DataFrame(columns=["Entity Type", "Count"])
 qt_entity_figure   = {}
 qt_entity_chart_visible = False
@@ -3889,6 +3891,14 @@ def _refresh_sessions(state):
         for s in sessions
     ]
     state.qt_sessions_data = pd.DataFrame(rows, columns=["ID", "Title", "Operator", "Entities", "Created", "full_id"])
+    # Refresh card picker options for QT page session attachment (matches _refresh_pipeline_picker truncation)
+    cards = store.list_cards()
+    card_options: List[tuple] = [("(no card)", "")]
+    for c in cards:
+        status_label = str(getattr(c, "status", "")).replace("_", " ").title()
+        title = str(getattr(c, "title", "") or "").strip()[:42]  # 42 chars fits picker width
+        card_options.append((f"{c.id[:8]} | {title} | {status_label}", c.id))
+    state.qt_card_opts = card_options
 
 
 def on_qt_save_session(state):
@@ -3899,6 +3909,7 @@ def on_qt_save_session(state):
     counts: Dict[str, int] = {}
     for _, row in state.qt_entity_rows.iterrows():
         counts[row["Entity Type"]] = counts.get(row["Entity Type"], 0) + 1
+    card_id = str(getattr(state, "qt_card_f", "") or "").strip()
     session = PIISession(
         title=title,
         original_text=state.qt_input,
@@ -3908,14 +3919,28 @@ def on_qt_save_session(state):
         operator=state.qt_operator,
         source_type="text",
         processing_ms=float(getattr(state, "qt_last_proc_ms", 0.0) or 0.0),
+        pipeline_card_id=card_id or None,
     )
     store.add_session(session)
     store.log_user_action("user", "session.save", "session", session.id,
                           f"Saved session '{title}' ({len(counts)} entity types)")
+    if card_id:
+        # Fetch full card to get title and priority for the audit entry
+        linked_card = store.get_card(card_id)
+        if linked_card:
+            store.update_card(card_id, session_id=session.id)
+            store.log_user_action(
+                "user", "session.attach", "card", card_id,
+                f"Session {session.id[:8]} attached to '{linked_card.title}'",
+                severity=_priority_to_severity(getattr(linked_card, "priority", "medium")),
+            )
+        else:
+            notify(state, "warning", "Selected card not found — session saved without card link.")
     state.qt_session_saved = True
     _refresh_sessions(state)
     _refresh_dashboard(state)
-    notify(state, "success", f"Session saved (ID: {session.id[:8]})")
+    notify(state, "success", f"Session saved (ID: {session.id[:8]})"
+           + (f" → card {card_id[:8]}" if card_id else ""))
 
 
 def on_qt_load_session(state):
