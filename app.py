@@ -4923,6 +4923,182 @@ def on_card_history_close(state):
     state.card_audit_open = False
 
 
+def on_pipeline_export_csv(state):
+    """Export pipeline cards to CSV format with optional status filtering."""
+    try:
+        cards = store.list_cards()
+        if not cards:
+            notify(state, "warning", "No pipeline cards to export.")
+            return
+        
+        # Build a comprehensive card export with all relevant metadata
+        rows = []
+        for c in cards:
+            # Resolve job status from taipy.core if linked
+            job_status = _resolve_job_status(getattr(c, 'scenario_id', None))
+            
+            rows.append({
+                "ID": c.id,
+                "Title": c.title,
+                "Description": c.description or "",
+                "Status": c.status,
+                "Priority": c.priority,
+                "Card Type": c.card_type or "",
+                "Assignee": c.assignee or "",
+                "Labels": ", ".join(c.labels) if c.labels else "",
+                "Data Source": c.data_source or "",
+                "Session ID": c.session_id or "",
+                "Scenario ID": c.scenario_id or "",
+                "Job Status": job_status,
+                "Attested": "Yes" if c.attested else "No",
+                "Attested By": c.attested_by or "",
+                "Attested At": c.attested_at or "",
+                "Attestation": c.attestation or "",
+                "Created At": c.created_at,
+                "Updated At": c.updated_at,
+            })
+        
+        df = pd.DataFrame(rows)
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"pipeline_cards_{timestamp}.csv"
+        download(state, content=csv_bytes, name=filename)
+        
+        # Log the export action
+        store.log_user_action(
+            "user", "pipeline.export", "pipeline", "all",
+            f"Exported {len(rows)} pipeline cards as CSV"
+        )
+        notify(state, "success", f"Exported {len(rows)} cards.")
+    except Exception as e:
+        _log.error(f"Pipeline CSV export failed: {e}")
+        notify(state, "error", "Export failed. Check logs.")
+
+
+def on_pipeline_export_json(state):
+    """Export pipeline cards to JSON format with optional status filtering."""
+    try:
+        cards = store.list_cards()
+        if not cards:
+            notify(state, "warning", "No pipeline cards to export.")
+            return
+        
+        import json
+        # Build a comprehensive card export with all relevant metadata
+        records = []
+        for c in cards:
+            # Resolve job status from taipy.core if linked
+            job_status = _resolve_job_status(getattr(c, 'scenario_id', None))
+            
+            # Convert PipelineCard dataclass to dict with all fields
+            record = {
+                "id": c.id,
+                "title": c.title,
+                "description": c.description or "",
+                "status": c.status,
+                "priority": c.priority,
+                "card_type": c.card_type or "",
+                "assignee": c.assignee or "",
+                "labels": c.labels if c.labels else [],
+                "data_source": c.data_source or "",
+                "session_id": c.session_id or "",
+                "scenario_id": c.scenario_id or "",
+                "job_status": job_status,
+                "attested": c.attested,
+                "attested_by": c.attested_by or "",
+                "attested_at": c.attested_at or "",
+                "attestation": c.attestation or "",
+                "attestation_sig_alg": c.attestation_sig_alg or "",
+                "attestation_sig_key_id": c.attestation_sig_key_id or "",
+                "attestation_sig": c.attestation_sig or "",
+                "attestation_sig_public_key": c.attestation_sig_public_key or "",
+                "attestation_sig_payload": c.attestation_sig_payload or "",
+                "attestation_sig_payload_hash": c.attestation_sig_payload_hash or "",
+                "attestation_sig_verified": c.attestation_sig_verified,
+                "attestation_sig_error": c.attestation_sig_error or "",
+                "created_at": c.created_at,
+                "updated_at": c.updated_at,
+            }
+            records.append(record)
+        
+        # Use default=str to safely serialize datetime/non-serializable objects
+        json_data = json.dumps(records, indent=2, default=str)
+        json_bytes = json_data.encode("utf-8")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"pipeline_cards_{timestamp}.json"
+        download(state, content=json_bytes, name=filename)
+        
+        # Log the export action
+        store.log_user_action(
+            "user", "pipeline.export", "pipeline", "all",
+            f"Exported {len(records)} pipeline cards as JSON"
+        )
+        notify(state, "success", f"Exported {len(records)} cards.")
+    except Exception as e:
+        _log.error(f"Pipeline JSON export failed: {e}")
+        notify(state, "error", "Export failed. Check logs.")
+
+
+def on_pipeline_export_filtered_csv(state):
+    """Export pipeline cards filtered by status to CSV format."""
+    try:
+        # Determine which status filter to apply based on active Kanban column
+        status_filter = getattr(state, "pipeline_export_status_filter", None)
+        
+        # Get cards filtered by status
+        cards = []
+        if status_filter and status_filter != "all":
+            by_status = store.cards_by_status()
+            cards = by_status.get(status_filter, [])
+        else:
+            cards = store.list_cards()
+        
+        if not cards:
+            notify(state, "warning", f"No cards found with status: {status_filter or 'all'}")
+            return
+        
+        # Build a comprehensive card export
+        rows = []
+        for c in cards:
+            job_status = _resolve_job_status(getattr(c, 'scenario_id', None))
+            
+            rows.append({
+                "ID": c.id,
+                "Title": c.title,
+                "Description": c.description or "",
+                "Status": c.status,
+                "Priority": c.priority,
+                "Card Type": c.card_type or "",
+                "Assignee": c.assignee or "",
+                "Labels": ", ".join(c.labels) if c.labels else "",
+                "Data Source": c.data_source or "",
+                "Job Status": job_status,
+                "Attested": "Yes" if c.attested else "No",
+                "Created At": c.created_at,
+                "Updated At": c.updated_at,
+            })
+        
+        df = pd.DataFrame(rows)
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        status_suffix = f"_{status_filter}" if status_filter and status_filter != "all" else ""
+        filename = f"pipeline_cards{status_suffix}_{timestamp}.csv"
+        download(state, content=csv_bytes, name=filename)
+        
+        # Log the export action
+        store.log_user_action(
+            "user", "pipeline.export", "pipeline", status_filter or "all",
+            f"Exported {len(rows)} pipeline cards (status={status_filter or 'all'}) as CSV"
+        )
+        notify(state, "success", f"Exported {len(rows)} cards ({status_filter or 'all'}).")
+    except Exception as e:
+        _log.error(f"Pipeline filtered CSV export failed: {e}")
+        notify(state, "error", "Export failed. Check logs.")
+
+
 # ── Schedule ──────────────────────────────────────────────────────────────────
 def on_appt_new(state):
     state.appt_id_edit = ""; state.appt_title_f = "PII Review"
@@ -5012,6 +5188,59 @@ def on_audit_filter(state):
 def on_audit_clear(state):
     state.audit_search = ""; state.audit_sev = "all"
     _refresh_audit(state)
+
+
+def on_audit_export_csv(state):
+    """Export audit logs to CSV format with current filters applied."""
+    if state.audit_table is None or state.audit_table.empty:
+        notify(state, "warning", "No audit entries to export.")
+        return
+    
+    try:
+        # Use the already filtered audit_table from state (includes user filters)
+        csv_bytes = state.audit_table.to_csv(index=False).encode("utf-8")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"audit_log_{timestamp}.csv"
+        download(state, content=csv_bytes, name=filename)
+        
+        # Log the export action
+        store.log_user_action(
+            "user", "audit.export", "audit", "all",
+            f"Exported {len(state.audit_table)} audit entries as CSV"
+        )
+        notify(state, "success", f"Exported {len(state.audit_table)} entries.")
+    except Exception as e:
+        _log.error(f"Audit CSV export failed: {e}")
+        notify(state, "error", "Export failed. Check logs.")
+
+
+def on_audit_export_json(state):
+    """Export audit logs to JSON format with current filters applied."""
+    if state.audit_table is None or state.audit_table.empty:
+        notify(state, "warning", "No audit entries to export.")
+        return
+    
+    try:
+        import json
+        # Convert DataFrame to list of dicts, handling datetime serialization
+        records = state.audit_table.to_dict(orient="records")
+        # Use default=str to safely serialize any datetime/non-serializable objects
+        json_data = json.dumps(records, indent=2, default=str)
+        json_bytes = json_data.encode("utf-8")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"audit_log_{timestamp}.json"
+        download(state, content=json_bytes, name=filename)
+        
+        # Log the export action
+        store.log_user_action(
+            "user", "audit.export", "audit", "all",
+            f"Exported {len(state.audit_table)} audit entries as JSON"
+        )
+        notify(state, "success", f"Exported {len(state.audit_table)} entries.")
+    except Exception as e:
+        _log.error(f"Audit JSON export failed: {e}")
+        notify(state, "error", "Export failed. Check logs.")
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
