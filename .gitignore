@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Taipy runtime data
+.taipy/
+.taipy_core/
+user_data/
+
+# Docs submodule (has its own .git)
+docs/taipy-doc/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Working notes
+status_*.md
+CLAUDE.md
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+deploy/auth-proxy/.env.auth-proxy
+!deploy/auth-proxy/.env.auth-proxy.example
+data/scenarios/
+
+# Python tooling caches/reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+
+# Logs/temp/editor junk
+*.log
+nohup.out
+*.pid
+*.swp
+*~
+
+# Local debug artifacts
+screenshot_*.png
+toast_debug.png
+*-analyze.txt
