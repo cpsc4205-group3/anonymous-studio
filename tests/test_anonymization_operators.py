@@ -14,7 +14,6 @@ Run:
     pytest tests/test_anonymization_operators.py -v
 """
 from __future__ import annotations
-import re
 import pytest
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
