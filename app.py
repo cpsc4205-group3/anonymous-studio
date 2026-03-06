@@ -3970,7 +3970,12 @@ def on_qt_save_session(state):
 
 
 def on_qt_load_session(state):
-    """Load a previously saved session back into the PII Text page."""
+    """Load a previously saved session back into the PII Text page.
+
+    Restored entities reflect the original detection configuration (threshold,
+    entity types, operator) at the time the session was saved — not the current
+    settings panel values.
+    """
     sid = state.qt_selected_session
     if not sid:
         notify(state, "warning", "Select a session from the table first.")
@@ -3996,6 +4001,8 @@ def on_qt_load_session(state):
 def on_qt_session_select(state, var_name, value):
     """Handle row click on the saved sessions table — store full session ID."""
     row = _get_table_row_from_action_payload(state.qt_sessions_data, value)
+    if not row:
+        return
     sid = str(row.get("full_id", "") or "")
     if sid:
         state.qt_selected_session = sid

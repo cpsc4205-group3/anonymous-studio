@@ -413,14 +413,14 @@ class PIIEngine:
     @staticmethod
     def _entity_dict(r, text: str) -> Dict:
         """Build entity dict from a RecognizerResult including rationale."""
+        ex = getattr(r, "analysis_explanation", None)
         return {
             "entity_type": r.entity_type,
             "start": r.start,
             "end": r.end,
             "score": round(r.score, 3),
             "text": text[r.start:r.end],
-            "recognizer": (r.analysis_explanation.recognizer
-                           if r.analysis_explanation else ""),
+            "recognizer": (getattr(ex, "recognizer", "") or "") if ex else "",
             "rationale": PIIEngine._build_rationale(r),
         }
 
