@@ -12,7 +12,7 @@ Pages
 from __future__ import annotations
 import numbers
 import logging
-import os, re, time, warnings, tempfile
+import os, re, time, warnings, tempfile, json
 from threading import Thread
 
 _log = logging.getLogger(__name__)
@@ -4965,7 +4965,7 @@ def on_pipeline_export_csv(state):
         filename = f"pipeline_cards_{timestamp}.csv"
         download(state, content=csv_bytes, name=filename)
         
-        # Log the export action
+        # Log the export action (actor="user" is consistent with single-tenant demo pattern)
         store.log_user_action(
             "user", "pipeline.export", "pipeline", "all",
             f"Exported {len(rows)} pipeline cards as CSV"
@@ -4984,7 +4984,6 @@ def on_pipeline_export_json(state):
             notify(state, "warning", "No pipeline cards to export.")
             return
         
-        import json
         # Build a comprehensive card export with all relevant metadata
         records = []
         for c in cards:
@@ -5030,7 +5029,7 @@ def on_pipeline_export_json(state):
         filename = f"pipeline_cards_{timestamp}.json"
         download(state, content=json_bytes, name=filename)
         
-        # Log the export action
+        # Log the export action (actor="user" is consistent with single-tenant demo pattern)
         store.log_user_action(
             "user", "pipeline.export", "pipeline", "all",
             f"Exported {len(records)} pipeline cards as JSON"
@@ -5088,7 +5087,7 @@ def on_pipeline_export_filtered_csv(state):
         filename = f"pipeline_cards{status_suffix}_{timestamp}.csv"
         download(state, content=csv_bytes, name=filename)
         
-        # Log the export action
+        # Log the export action (actor="user" is consistent with single-tenant demo pattern)
         store.log_user_action(
             "user", "pipeline.export", "pipeline", status_filter or "all",
             f"Exported {len(rows)} pipeline cards (status={status_filter or 'all'}) as CSV"
@@ -5203,7 +5202,7 @@ def on_audit_export_csv(state):
         filename = f"audit_log_{timestamp}.csv"
         download(state, content=csv_bytes, name=filename)
         
-        # Log the export action
+        # Log the export action (actor="user" is consistent with single-tenant demo pattern)
         store.log_user_action(
             "user", "audit.export", "audit", "all",
             f"Exported {len(state.audit_table)} audit entries as CSV"
@@ -5221,7 +5220,6 @@ def on_audit_export_json(state):
         return
     
     try:
-        import json
         # Convert DataFrame to list of dicts, handling datetime serialization
         records = state.audit_table.to_dict(orient="records")
         # Use default=str to safely serialize any datetime/non-serializable objects
@@ -5232,7 +5230,7 @@ def on_audit_export_json(state):
         filename = f"audit_log_{timestamp}.json"
         download(state, content=json_bytes, name=filename)
         
-        # Log the export action
+        # Log the export action (actor="user" is consistent with single-tenant demo pattern)
         store.log_user_action(
             "user", "audit.export", "audit", "all",
             f"Exported {len(state.audit_table)} audit entries as JSON"
