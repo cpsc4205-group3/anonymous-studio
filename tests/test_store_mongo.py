@@ -35,7 +35,7 @@ import pytest
 
 mongomock = pytest.importorskip("mongomock")
 
-from store.models import PIISession, PipelineCard, Appointment, AuditEntry
+from store.models import PIISession, PipelineCard, Appointment
 from store import get_store, _reset_store
 
 
