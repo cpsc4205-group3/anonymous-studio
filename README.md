@@ -443,19 +443,85 @@ Latest run (March 5, 2026):
 
 ## File Structure
 
+The layout follows Taipy conventions: entrypoints and core modules live at the
+root so `taipy run main.py` resolves imports without extra packaging, while
+supporting logic is split into focused packages.
+
 ```
-anonymous_studio/
-├── main.py          Taipy CLI entrypoint (`taipy run main.py`)
-├── app.py           App state, callbacks, and runtime wiring
-├── pages/
-│   ├── __init__.py
-│   └── definitions.py   Taipy page markup strings
-├── core_config.py   taipy.core: DataNodes, Task, Scenario, Orchestrator
-├── tasks.py         run_pii_anonymization() — the actual pipeline function
-├── pii_engine.py    Presidio wrapper — analyze(), anonymize(), highlight_html()
-├── store.py         In-memory store for Kanban cards, appointments, audit log
-└── requirements.txt
+anonymous-studio/
+│
+│  # ── Entrypoints ──────────────────────────────────────────────────────────
+├── main.py              Taipy CLI entrypoint (`taipy run main.py`)
+├── rest_main.py         Taipy REST API entrypoint (`taipy run rest_main.py`)
+├── app.py               GUI state variables, callbacks, and runtime wiring
+│
+│  # ── Taipy core pipeline ──────────────────────────────────────────────────
+├── core_config.py       DataNode / Task / Scenario configs + Orchestrator bootstrap
+├── config.toml          Mirror of core_config.py for the Taipy Studio VS Code extension
+├── tasks.py             run_pii_anonymization() — the function the Orchestrator executes
+├── scheduler.py         Background appointment scheduler (daemon thread)
+│
+│  # ── Domain logic ─────────────────────────────────────────────────────────
+├── pii_engine.py        Presidio Analyzer + Anonymizer wrapper; spaCy model resolution
+│
+│  # ── UI ───────────────────────────────────────────────────────────────────
+├── pages/               Taipy Markdown DSL page strings (one const per page)
+│   ├── __init__.py          Re-exports PAGES dict
+│   └── definitions.py       DASH, QT, JOBS, PIPELINE, SCHEDULE, AUDIT, UI_DEMO
+├── ui/
+│   └── theme.py             Plotly / Taipy stylekit constants and colour tokens
+├── app.css              Custom CSS overrides (taipy-* class selectors)
+├── images/              SVG icons used by the navigation menu
+│
+│  # ── Services ─────────────────────────────────────────────────────────────
+├── services/            Extracted business logic (keeps app.py manageable)
+│   ├── app_context.py       AppContext dataclass — runtime registries
+│   ├── attestation_crypto.py  File integrity hashing
+│   ├── auth0_rest.py        Auth0 JWT middleware for REST API
+│   ├── geo_signals.py       Geo-token normalisation helpers
+│   ├── job_progress.py      Progress read/write/clear (PROGRESS_REGISTRY bridge)
+│   ├── jobs.py              Job submission helpers
+│   ├── progress_snapshots.py  Durable progress snapshot storage
+│   ├── synthetic.py         OpenAI-based synthetic data generation
+│   └── telemetry.py         Optional telemetry hooks
+│
+│  # ── Data store ───────────────────────────────────────────────────────────
+├── store/               Backend-agnostic persistence (cards, audit, appointments)
+│   ├── __init__.py          get_store() factory + singleton
+│   ├── base.py              Abstract StoreBase interface
+│   ├── models.py            PipelineCard, Appointment, PIISession, AuditEntry
+│   ├── memory.py            In-memory implementation (default)
+│   ├── mongo.py             MongoDB implementation
+│   └── duckdb.py            DuckDB implementation
+│
+│  # ── Tests & scripts ──────────────────────────────────────────────────────
+├── tests/               pytest suite (test_pii_engine, test_store, …)
+├── scripts/             Utility scripts (key generation, stress testing, …)
+│
+│  # ── Deployment ───────────────────────────────────────────────────────────
+├── deploy/
+│   ├── auth-proxy/          OAuth2-proxy + Docker Compose for auth
+│   └── grafana/             Grafana dashboards for monitoring
+│
+│  # ── Project config ───────────────────────────────────────────────────────
+├── requirements.txt     Python dependencies (taipy, presidio, spacy, …)
+├── Makefile             Stress tests, mongo-check, auth-proxy up/down
+├── pytest.ini           Pytest configuration
+├── .env.example         Sample environment variables
+├── .gitignore
+└── .taipyignore         Prevents Taipy's built-in server from exposing source files
 ```
+
+### Why this layout works for Taipy
+
+| Convention | Rationale |
+|------------|-----------|
+| Root-level `app.py` + `main.py` | `taipy run main.py` expects the GUI module at the import root — no `src/` wrapper needed |
+| `pages/` package | Keeps Markdown DSL strings out of `app.py`; Taipy resolves bindings from the module where `Gui()` is created |
+| `core_config.py` + `config.toml` | Programmatic config is authoritative; TOML is a read-only mirror for Taipy Studio |
+| `store/` package | Separates data persistence from Taipy — `app.py` only calls `get_store()` public methods |
+| `services/` package | Extracts business logic from callbacks so `app.py` stays focused on state + UI |
+| `.taipyignore` | Blocks Taipy's static file server from exposing `.py`, `.toml`, `.env`, and internal dirs |
 
 ## Entity Types Detected
 `EMAIL_ADDRESS` · `PHONE_NUMBER` · `CREDIT_CARD` · `US_SSN` · `US_PASSPORT`
