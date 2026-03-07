@@ -414,6 +414,61 @@ class TestSeedData:
         assert len(store.list_appointments()) == 0
         assert len(store.list_audit()) == 0
 
+    # ── Sprint 1 retrospective: backlog verification ───────────────────────────
+    # Per docs/STORY_RECOVERY_README.md and docs/SUMMARY.md, the sprint 1 retro
+    # identified exactly 7 cards remaining in backlog after sprint 1:
+    #   card-004  Patient Records HIPAA Compliance     (high priority)
+    #   card-005  Vendor Contract Data Review          (low priority)
+    #   card-011  Export Audit Logs as CSV/JSON        (medium, lost impl.)
+    #   card-012  Image PII Detection via OCR          (low priority)
+    #   card-013  Role-Based Authentication            (high priority)
+    #   card-014  Compliance Review Notifications      (medium priority)
+    #   card-015  File Attachments on Pipeline Cards   (medium priority)
+
+    def test_sprint_1_retro_backlog_card_ids(self, seeded_store):
+        """Backlog card IDs must exactly match the sprint 1 retro outcome."""
+        backlog_ids = {c.id for c in seeded_store.list_cards(status="backlog")}
+        expected = {
+            "card-004",  # Patient Records HIPAA Compliance
+            "card-005",  # Vendor Contract Data Review
+            "card-011",  # Export Audit Logs as CSV/JSON (lost implementation)
+            "card-012",  # Image PII Detection via OCR
+            "card-013",  # Role-Based Authentication
+            "card-014",  # Compliance Review Notifications
+            "card-015",  # File Attachments on Pipeline Cards
+        }
+        assert backlog_ids == expected
+
+    def test_sprint_1_retro_backlog_count(self, seeded_store):
+        """Seven cards must be in backlog after sprint 1."""
+        assert len(seeded_store.list_cards(status="backlog")) == 7
+
+    def test_sprint_1_retro_done_card_ids(self, seeded_store):
+        """Done card IDs must match the sprint 1 retro completed work."""
+        done_ids = {c.id for c in seeded_store.list_cards(status="done")}
+        expected = {
+            "card-003",  # Research Dataset Anonymization (attested)
+            "card-006",  # Allowlist / Denylist Support
+            "card-008",  # ORGANIZATION Entity Support
+            "card-009",  # REST API for PII Detection
+            "card-010",  # MongoDB Persistence Layer
+        }
+        assert done_ids == expected
+
+    def test_sprint_1_retro_in_progress_card_ids(self, seeded_store):
+        """In-progress card IDs must match the sprint 1 retro active work."""
+        in_progress_ids = {c.id for c in seeded_store.list_cards(status="in_progress")}
+        expected = {
+            "card-002",  # HR Records PII Scrub
+            "card-007",  # Encrypt Operator Key Management (partial)
+        }
+        assert in_progress_ids == expected
+
+    def test_sprint_1_retro_review_card_ids(self, seeded_store):
+        """Review card IDs must match the sprint 1 retro review queue."""
+        review_ids = {c.id for c in seeded_store.list_cards(status="review")}
+        assert review_ids == {"card-001"}  # Q1 Customer Export Anonymization
+
 
 # ── get_store() factory ───────────────────────────────────────────────────────
 
