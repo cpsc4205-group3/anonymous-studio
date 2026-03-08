@@ -191,6 +191,7 @@ class MemoryStore(StoreBase):
             for k, v in kwargs.items():
                 if hasattr(appt, k):
                     setattr(appt, k, v)
+            appt.updated_at = _now()
         self._log(
             "system", "schedule.update", "appointment", appt_id,
             f"Updated '{appt.title}': {', '.join(kwargs.keys())}",

@@ -110,6 +110,19 @@ class DuckDBStore(StoreBase):
                 );
                 """
             )
+            # Indexes for common query patterns
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cards_updated ON pipeline_cards(updated_at DESC);"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp DESC);"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_created ON pii_sessions(created_at DESC);"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_appts_scheduled ON appointments(scheduled_for ASC);"
+            )
 
     def _has_any_data(self) -> bool:
         with self._lock:
@@ -134,6 +147,37 @@ class DuckDBStore(StoreBase):
                 f"INSERT INTO {table} (id, {sort_col}, payload) VALUES (?, ?, ?)",
                 [rid, sort_value, payload],
             )
+
+    def _upsert_in_txn(self, table: str, rid: str, sort_value: str, payload: str) -> None:
+        """Like _upsert but caller must already hold the lock inside a transaction."""
+        if table not in _SORT_COLUMN:
+            raise ValueError(f"Unknown table: {table!r}")
+        sort_col = _SORT_COLUMN[table]
+        self._conn.execute(f"DELETE FROM {table} WHERE id = ?", [rid])
+        self._conn.execute(
+            f"INSERT INTO {table} (id, {sort_col}, payload) VALUES (?, ?, ?)",
+            [rid, sort_value, payload],
+        )
+
+    def _log_in_txn(
+        self,
+        actor: str,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        details: str = "",
+        severity: str = "info",
+    ) -> None:
+        """Like _log but caller must already hold the lock inside a transaction."""
+        entry = AuditEntry(
+            actor=actor,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=details,
+            severity=severity if severity in _VALID_SEVERITIES else "info",
+        )
+        self._upsert_in_txn("audit_log", entry.id, entry.timestamp, _to_payload(entry))
 
     def _get_payload(self, table: str, rid: str) -> Optional[str]:
         if table not in _SORT_COLUMN:
@@ -179,14 +223,18 @@ class DuckDBStore(StoreBase):
     # ── Sessions ──────────────────────────────────────────────────────────────
 
     def add_session(self, session: PIISession) -> PIISession:
-        self._upsert("pii_sessions", session.id, session.created_at, _to_payload(session))
-        self._log(
-            "system",
-            "pii.anonymize",
-            "session",
-            session.id,
-            f"Anonymized {len(session.entities)} entities using '{session.operator}'",
-        )
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                self._upsert_in_txn("pii_sessions", session.id, session.created_at, _to_payload(session))
+                self._log_in_txn(
+                    "system", "pii.anonymize", "session", session.id,
+                    f"Anonymized {len(session.entities)} entities using '{session.operator}'",
+                )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return session
 
     def get_session(self, session_id: str) -> Optional[PIISession]:
@@ -200,14 +248,18 @@ class DuckDBStore(StoreBase):
     # ── Pipeline cards ────────────────────────────────────────────────────────
 
     def add_card(self, card: PipelineCard) -> PipelineCard:
-        self._upsert("pipeline_cards", card.id, card.updated_at, _to_payload(card))
-        self._log(
-            "system",
-            "pipeline.create",
-            "card",
-            card.id,
-            f"Created card '{card.title}' in '{card.status}'",
-        )
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                self._upsert_in_txn("pipeline_cards", card.id, card.updated_at, _to_payload(card))
+                self._log_in_txn(
+                    "system", "pipeline.create", "card", card.id,
+                    f"Created card '{card.title}' in '{card.status}'",
+                )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return card
 
     def get_card(self, card_id: str) -> Optional[PipelineCard]:
@@ -215,44 +267,53 @@ class DuckDBStore(StoreBase):
         return _from_payload(PipelineCard, payload) if payload else None
 
     def update_card(self, card_id: str, **kwargs) -> Optional[PipelineCard]:
-        card = self.get_card(card_id)
-        if not card:
-            return None
-        old_status = card.status
-        for k, v in kwargs.items():
-            if hasattr(card, k):
-                setattr(card, k, v)
-        card.updated_at = _now()
-        self._upsert("pipeline_cards", card.id, card.updated_at, _to_payload(card))
-
-        if "status" in kwargs and kwargs.get("status") != old_status:
-            self._log(
-                "system",
-                "pipeline.move",
-                "card",
-                card_id,
-                f"Moved '{card.title}' from '{old_status}' -> '{kwargs.get('status')}'",
-            )
-        if kwargs.get("attested"):
-            sig_key = str(getattr(card, "attestation_sig_key_id", "") or "").strip()
-            sig_hash = str(getattr(card, "attestation_sig_payload_hash", "") or "").strip()
-            sig_note = f" (signed {sig_key}:{sig_hash[:12]})" if sig_key and sig_hash else ""
-            self._log(
-                "system",
-                "compliance.attest",
-                "card",
-                card_id,
-                f"Attested by '{card.attested_by}'{sig_note}",
-            )
+        with self._lock:
+            card = self.get_card(card_id)
+            if not card:
+                return None
+            old_status = card.status
+            for k, v in kwargs.items():
+                if hasattr(card, k):
+                    setattr(card, k, v)
+            card.updated_at = _now()
+            self._conn.execute("BEGIN")
+            try:
+                self._upsert_in_txn("pipeline_cards", card.id, card.updated_at, _to_payload(card))
+                if "status" in kwargs and kwargs.get("status") != old_status:
+                    self._log_in_txn(
+                        "system", "pipeline.move", "card", card_id,
+                        f"Moved '{card.title}' from '{old_status}' -> '{kwargs.get('status')}'",
+                    )
+                if kwargs.get("attested"):
+                    sig_key = str(getattr(card, "attestation_sig_key_id", "") or "").strip()
+                    sig_hash = str(getattr(card, "attestation_sig_payload_hash", "") or "").strip()
+                    sig_note = f" (signed {sig_key}:{sig_hash[:12]})" if sig_key and sig_hash else ""
+                    self._log_in_txn(
+                        "system", "compliance.attest", "card", card_id,
+                        f"Attested by '{card.attested_by}'{sig_note}",
+                    )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return card
 
     def delete_card(self, card_id: str) -> bool:
-        card = self.get_card(card_id)
-        if not card:
-            return False
         with self._lock:
-            self._conn.execute("DELETE FROM pipeline_cards WHERE id = ?", [card_id])
-        self._log("system", "pipeline.delete", "card", card_id, f"Deleted '{card.title}'", severity="warning")
+            card = self.get_card(card_id)
+            if not card:
+                return False
+            self._conn.execute("BEGIN")
+            try:
+                self._conn.execute("DELETE FROM pipeline_cards WHERE id = ?", [card_id])
+                self._log_in_txn(
+                    "system", "pipeline.delete", "card", card_id,
+                    f"Deleted '{card.title}'", severity="warning",
+                )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return True
 
     def list_cards(self, status: Optional[str] = None) -> List[PipelineCard]:
@@ -272,14 +333,18 @@ class DuckDBStore(StoreBase):
     # ── Appointments ──────────────────────────────────────────────────────────
 
     def add_appointment(self, appt: Appointment) -> Appointment:
-        self._upsert("appointments", appt.id, appt.scheduled_for, _to_payload(appt))
-        self._log(
-            "system",
-            "schedule.create",
-            "appointment",
-            appt.id,
-            f"Scheduled '{appt.title}' for {appt.scheduled_for}",
-        )
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                self._upsert_in_txn("appointments", appt.id, appt.scheduled_for, _to_payload(appt))
+                self._log_in_txn(
+                    "system", "schedule.create", "appointment", appt.id,
+                    f"Scheduled '{appt.title}' for {appt.scheduled_for}",
+                )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return appt
 
     def get_appointment(self, appt_id: str) -> Optional[Appointment]:
@@ -287,29 +352,43 @@ class DuckDBStore(StoreBase):
         return _from_payload(Appointment, payload) if payload else None
 
     def update_appointment(self, appt_id: str, **kwargs) -> Optional[Appointment]:
-        appt = self.get_appointment(appt_id)
-        if not appt:
-            return None
-        for k, v in kwargs.items():
-            if hasattr(appt, k):
-                setattr(appt, k, v)
-        self._upsert("appointments", appt.id, appt.scheduled_for, _to_payload(appt))
-        self._log(
-            "system",
-            "schedule.update",
-            "appointment",
-            appt_id,
-            f"Updated '{appt.title}': {', '.join(kwargs.keys())}",
-        )
+        with self._lock:
+            appt = self.get_appointment(appt_id)
+            if not appt:
+                return None
+            for k, v in kwargs.items():
+                if hasattr(appt, k):
+                    setattr(appt, k, v)
+            appt.updated_at = _now()
+            self._conn.execute("BEGIN")
+            try:
+                self._upsert_in_txn("appointments", appt.id, appt.scheduled_for, _to_payload(appt))
+                self._log_in_txn(
+                    "system", "schedule.update", "appointment", appt_id,
+                    f"Updated '{appt.title}': {', '.join(kwargs.keys())}",
+                )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return appt
 
     def delete_appointment(self, appt_id: str) -> bool:
-        appt = self.get_appointment(appt_id)
-        if not appt:
-            return False
         with self._lock:
-            self._conn.execute("DELETE FROM appointments WHERE id = ?", [appt_id])
-        self._log("system", "schedule.delete", "appointment", appt_id, f"Deleted '{appt.title}'", severity="warning")
+            appt = self.get_appointment(appt_id)
+            if not appt:
+                return False
+            self._conn.execute("BEGIN")
+            try:
+                self._conn.execute("DELETE FROM appointments WHERE id = ?", [appt_id])
+                self._log_in_txn(
+                    "system", "schedule.delete", "appointment", appt_id,
+                    f"Deleted '{appt.title}'", severity="warning",
+                )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return True
 
     def list_appointments(self) -> List[Appointment]:
@@ -336,7 +415,14 @@ class DuckDBStore(StoreBase):
         details: str = "",
         severity: str = "info",
     ) -> None:
-        self._log(actor, action, resource_type, resource_id, details, severity)
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                self._log_in_txn(actor, action, resource_type, resource_id, details, severity)
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
 
     # ── Stats ─────────────────────────────────────────────────────────────────
 

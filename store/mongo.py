@@ -165,8 +165,8 @@ class MongoStore(StoreBase):
         doc = self._sessions.find_one({"_id": session_id})
         return _from_doc(PIISession, doc) if doc else None
 
-    def list_sessions(self, limit: int = 100) -> List[PIISession]:
-        cursor = self._sessions.find().sort("created_at", DESCENDING).limit(limit)
+    def list_sessions(self) -> List[PIISession]:
+        cursor = self._sessions.find().sort("created_at", DESCENDING)
         return [_from_doc(PIISession, d) for d in cursor]
 
     # ── PipelineCard ──────────────────────────────────────────────────────────
