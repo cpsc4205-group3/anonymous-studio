@@ -2683,6 +2683,82 @@ def _refresh_ui_demo(state) -> None:
         )
 
 
+def _playground_store_data() -> Optional[Dict[str, Any]]:
+    """Extract chart-ready data series from the store for the Plotly playground.
+
+    Returns ``None`` when the store has no session/entity data, signalling the
+    caller to fall back to sample data.
+    """
+    from collections import defaultdict as _dd
+
+    stats = store.stats()
+    sessions = list(store.list_sessions())
+    entity_breakdown = dict(stats.get("entity_breakdown", {}) or {})
+    pipeline_status = dict(stats.get("pipeline_by_status", {}) or {})
+    sorted_entities = sorted(entity_breakdown.items(), key=lambda x: (-x[1], x[0]))
+
+    if not sorted_entities:
+        return None
+
+    top5 = sorted_entities[:5]
+    labels = [e[0] for e in top5]
+    counts = [int(e[1]) for e in top5]
+
+    # Daily entity trends (last 7 days).
+    # created_at is always an ISO-8601 string from _now() (e.g. "2026-03-08T…").
+    daily: Dict[str, int] = _dd(int)
+    for s in sessions:
+        day = (getattr(s, "created_at", "") or "")[:10]
+        if day:
+            daily[day] += sum((getattr(s, "entity_counts", None) or {}).values())
+    sorted_days = sorted(daily.items())[-7:]
+
+    # Confidence scores per entity type & recognizer × entity cross-tab
+    conf_by_type: Dict[str, List[int]] = _dd(list)
+    all_confs: List[int] = []
+    recog_entity: Dict[str, Dict[str, int]] = _dd(lambda: _dd(int))
+    for sess in sessions:
+        for ent in (getattr(sess, "entities", None) or []):
+            etype = str(ent.get("Entity Type", ent.get("entity_type", "")) or "")
+            conf = ent.get("Confidence")
+            if conf is None:
+                score = ent.get("score")
+                if isinstance(score, (int, float)):
+                    conf = int(round(float(score) * 100))
+            if isinstance(conf, (int, float)):
+                conf_by_type[etype].append(int(conf))
+                all_confs.append(int(conf))
+            recog = str(ent.get("Recognizer", ent.get("recognizer", "")) or "")
+            if etype and recog:
+                recog_entity[recog][etype] += 1
+
+    # Pipeline funnel
+    stage_order = ["backlog", "in_progress", "review", "done"]
+    funnel_stages = [s.replace("_", " ").title() for s in stage_order]
+    funnel_counts = [int(pipeline_status.get(s, 0)) for s in stage_order]
+
+    # Processing-time per session (for candlestick/3d)
+    proc_times = [
+        getattr(s, "processing_ms", 0.0) or 0.0 for s in sessions
+    ]
+
+    return {
+        "labels": labels,
+        "counts": counts,
+        "sorted_entities": sorted_entities,
+        "daily_labels": [d[0] for d in sorted_days] if sorted_days else labels,
+        "daily_counts": [d[1] for d in sorted_days] if sorted_days else counts,
+        "conf_by_type": dict(conf_by_type),
+        "all_confs": all_confs,
+        "recog_entity": {k: dict(v) for k, v in recog_entity.items()},
+        "funnel_stages": funnel_stages,
+        "funnel_counts": funnel_counts,
+        "proc_times": proc_times,
+        "sessions": sessions,
+        "pipeline_status": pipeline_status,
+    }
+
+
 def _refresh_plotly_playground(state) -> None:
     chart_type = str(getattr(state, "ui_plot_type", "bar") or "bar").strip().lower()
     if chart_type not in {
@@ -2761,13 +2837,24 @@ def _refresh_plotly_playground(state) -> None:
         state.ui_plot_playground_figure = {}
         return
 
-    labels = ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "URL", "IP_ADDRESS"]
-    series_a = [34, 21, 17, 12, 9]
-    series_b = [19, 16, 12, 14, 7]
-    points_x = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    points_y = [12, 18, 15, 22, 19, 14, 17]
-    points_z = [9, 14, 13, 11, 16, 12, 10]
-    dates = ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07"]
+    sd = _playground_store_data()
+    using_sample = sd is None
+    if sd is not None:
+        labels = sd["labels"]
+        series_a = sd["counts"]
+        series_b = []
+        points_x = sd["daily_labels"]
+        points_y = sd["daily_counts"]
+        points_z = []
+        dates = sd["daily_labels"]
+    else:
+        labels = ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "URL", "IP_ADDRESS"]
+        series_a = [34, 21, 17, 12, 9]
+        series_b = [19, 16, 12, 14, 7]
+        points_x = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        points_y = [12, 18, 15, 22, 19, 14, 17]
+        points_z = [9, 14, 13, 11, 16, 12, 10]
+        dates = ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07"]
 
     if palette == "mono":
         colors = list(mono_colorway)
@@ -2782,53 +2869,77 @@ def _refresh_plotly_playground(state) -> None:
     if chart_type == "bar":
         if orient_flag == "h":
             fig.add_bar(y=labels, x=series_a, name="Current", orientation="h", marker_color=colors[0])
-            fig.add_bar(y=labels, x=series_b, name="Previous", orientation="h", marker_color=colors[1])
+            if using_sample:
+                fig.add_bar(y=labels, x=series_b, name="Previous", orientation="h", marker_color=colors[1])
             x_title, y_title = "Count", "Entity Type"
         else:
             fig.add_bar(x=labels, y=series_a, name="Current", marker_color=colors[0])
-            fig.add_bar(x=labels, y=series_b, name="Previous", marker_color=colors[1])
+            if using_sample:
+                fig.add_bar(x=labels, y=series_b, name="Previous", marker_color=colors[1])
             x_title, y_title = "Entity Type", "Count"
         fig.update_layout(barmode=barmode)
     elif chart_type == "line":
-        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Current", line=dict(color=colors[0], width=2))
-        fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", line=dict(color=colors[1], width=2))
+        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Detections", line=dict(color=colors[0], width=2))
+        if using_sample:
+            fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", line=dict(color=colors[1], width=2))
         x_title, y_title = "Day", "Detections"
     elif chart_type == "scatter":
+        if not using_sample and sd and sd["conf_by_type"]:
+            sc_x = [int(sd["conf_by_type"].get(l, [0])[0]) if sd["conf_by_type"].get(l) else 0 for l in labels]
+            sc_y = [len(sd["conf_by_type"].get(l, [])) for l in labels]
+            sc_sizes = [max(8, c) for c in series_a]
+        else:
+            sc_x, sc_y, sc_sizes = series_a, series_b, [16, 14, 12, 10, 9]
         fig.add_scatter(
-            x=series_a,
-            y=series_b,
+            x=sc_x,
+            y=sc_y,
             mode=trace_mode,
             name="Entity Clusters",
-            marker=dict(size=[16, 14, 12, 10, 9], color=colors[:5]),
+            marker=dict(size=sc_sizes[:len(labels)], color=colors[:len(labels)]),
             text=labels,
         )
-        x_title, y_title = "Current", "Previous"
+        x_title, y_title = ("Confidence" if not using_sample else "Current"), ("Occurrences" if not using_sample else "Previous")
     elif chart_type == "area":
-        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Current", fill="tozeroy", line=dict(color=colors[0]))
-        fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", fill="tozeroy", line=dict(color=colors[1]))
+        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Detections", fill="tozeroy", line=dict(color=colors[0]))
+        if using_sample:
+            fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", fill="tozeroy", line=dict(color=colors[1]))
         x_title, y_title = "Day", "Detections"
     elif chart_type == "pie":
         fig.add_pie(labels=labels, values=series_a, hole=0.45, marker=dict(colors=colors[:len(labels)]), textinfo="label+percent")
         x_title, y_title = "", ""
     elif chart_type == "box":
-        fig.add_box(y=[78, 81, 76, 90, 72, 84], name="PERSON", marker_color=colors[0], boxpoints="outliers")
-        fig.add_box(y=[69, 74, 66, 80, 71, 77], name="EMAIL", marker_color=colors[1], boxpoints="outliers")
-        fig.add_box(y=[62, 71, 68, 75, 64, 70], name="PHONE", marker_color=colors[2], boxpoints="outliers")
+        if sd and sd["conf_by_type"]:
+            for i, etype in enumerate(labels[:3]):
+                vals = sd["conf_by_type"].get(etype, [])
+                if vals:
+                    fig.add_box(y=vals, name=etype, marker_color=colors[i % len(colors)], boxpoints="outliers")
+        else:
+            fig.add_box(y=[78, 81, 76, 90, 72, 84], name="PERSON", marker_color=colors[0], boxpoints="outliers")
+            fig.add_box(y=[69, 74, 66, 80, 71, 77], name="EMAIL", marker_color=colors[1], boxpoints="outliers")
+            fig.add_box(y=[62, 71, 68, 75, 64, 70], name="PHONE", marker_color=colors[2], boxpoints="outliers")
         x_title, y_title = "Entity Type", "Confidence %"
     elif chart_type == "histogram":
-        fig.add_histogram(x=[92, 88, 75, 69, 85, 90, 78, 82, 71, 64, 59, 83], name="Confidence", marker_color=colors[0], nbinsx=8, opacity=0.85)
+        hist_data = sd["all_confs"] if sd and sd["all_confs"] else [92, 88, 75, 69, 85, 90, 78, 82, 71, 64, 59, 83]
+        fig.add_histogram(x=hist_data, name="Confidence", marker_color=colors[0], nbinsx=8, opacity=0.85)
         x_title, y_title = "Confidence %", "Frequency"
     elif chart_type == "heatmap":
-        z = [
-            [21, 12, 9, 4],
-            [14, 19, 7, 5],
-            [9, 11, 15, 6],
-            [7, 8, 12, 10],
-        ]
+        if sd and sd["recog_entity"]:
+            recog_names = sorted(sd["recog_entity"].keys())[:4]
+            etype_names = labels[:4]
+            z = [[sd["recog_entity"].get(r, {}).get(e, 0) for e in etype_names] for r in recog_names]
+        else:
+            etype_names = ["PERSON", "EMAIL", "PHONE", "URL"]
+            recog_names = ["Spacy", "Regex", "Denylist", "Custom Regex"]
+            z = [
+                [21, 12, 9, 4],
+                [14, 19, 7, 5],
+                [9, 11, 15, 6],
+                [7, 8, 12, 10],
+            ]
         fig.add_heatmap(
             z=z,
-            x=["PERSON", "EMAIL", "PHONE", "URL"],
-            y=["Spacy", "Regex", "Denylist", "Custom Regex"],
+            x=etype_names,
+            y=recog_names,
             colorscale="Blues",
             colorbar=dict(title="Count"),
         )
@@ -2915,8 +3026,12 @@ def _refresh_plotly_playground(state) -> None:
         )
         x_title, y_title = "", ""
     elif chart_type == "funnel":
-        stages = ["Backlog", "In Progress", "Review", "Done"]
-        stage_counts = [42, 28, 16, 11]
+        if sd and any(sd["funnel_counts"]):
+            stages = sd["funnel_stages"]
+            stage_counts = sd["funnel_counts"]
+        else:
+            stages = ["Backlog", "In Progress", "Review", "Done"]
+            stage_counts = [42, 28, 16, 11]
         fig = go.Figure(
             go.Funnel(
                 y=stages,
@@ -2928,11 +3043,14 @@ def _refresh_plotly_playground(state) -> None:
         )
         x_title, y_title = "Cards", "Pipeline Stage"
     elif chart_type == "violin":
-        violin_data = {
-            "PERSON":        [78, 81, 76, 90, 72, 84, 88, 79, 83, 77, 85, 91],
-            "EMAIL_ADDRESS": [69, 74, 66, 80, 71, 77, 82, 70, 75, 68, 79, 83],
-            "PHONE_NUMBER":  [62, 71, 68, 75, 64, 70, 74, 65, 69, 63, 72, 78],
-        }
+        if sd and sd["conf_by_type"]:
+            violin_data = {k: v for k, v in list(sd["conf_by_type"].items())[:3] if v}
+        else:
+            violin_data = {
+                "PERSON":        [78, 81, 76, 90, 72, 84, 88, 79, 83, 77, 85, 91],
+                "EMAIL_ADDRESS": [69, 74, 66, 80, 71, 77, 82, 70, 75, 68, 79, 83],
+                "PHONE_NUMBER":  [62, 71, 68, 75, 64, 70, 74, 65, 69, 63, 72, 78],
+            }
         for i, (etype, vals) in enumerate(violin_data.items()):
             fig.add_trace(
                 go.Violin(
@@ -2975,10 +3093,13 @@ def _refresh_plotly_playground(state) -> None:
         )
         x_title, y_title = "", ""
 
+    # Charts that always use illustrative sample data
+    _always_sample = {"surface", "choropleth", "candlestick", "3d_scatter", "sankey", "polar_radar"}
+    sample_suffix = " (sample data)" if using_sample or chart_type in _always_sample else ""
     layout_kwargs = dict(
         showlegend=show_legend,
         margin={"t": 42, "b": 56, "l": 56, "r": 24},
-        title=f"Plotly Playground - {chart_type.replace('_', ' ').title()}",
+        title=f"Plotly Playground - {chart_type.replace('_', ' ').title()}{sample_suffix}",
     )
     if chart_type in {"bar", "line", "scatter", "area", "box", "histogram", "heatmap", "candlestick", "funnel", "violin"}:
         layout_kwargs["xaxis"] = {**chart_layout["xaxis"], "title": x_title}
