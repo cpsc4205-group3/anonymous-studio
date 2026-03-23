@@ -198,7 +198,7 @@ def build_sample_df(records: Any) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         return pd.DataFrame(records).fillna("")
-    except Exception:
+    except (ValueError, TypeError, KeyError):
         return pd.DataFrame()
 
 
