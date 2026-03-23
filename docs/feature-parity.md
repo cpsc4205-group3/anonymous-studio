@@ -35,6 +35,7 @@ These features are **new in v2** and were not in the original PoC:
 | **Appointment scheduler** | ✅ **Done** | `scheduler.py` | Background daemon for scheduled reviews |
 | **MongoDB persistence** | ✅ **Done** | `store/mongo.py` | MongoStore backend |
 | **REST API** | ✅ **Done** | `rest_main.py` | Taipy Rest with optional Auth0 |
+| **Export audit + pipeline data** | ✅ **Done** | `app.py`, Audit/Pipeline pages | `on_audit_export_csv/json`, `on_pipeline_export_csv/json`; CSV schema stable on empty store |
 
 ## ⚠️ Partially Implemented
 
@@ -54,7 +55,6 @@ These features from the demo cards are still **in backlog**:
 ### New Feature Requests (Backlog)
 | Card ID | Story Title | Description | Priority | Labels |
 |---------|-------------|-------------|----------|--------|
-| card-011 | Export Audit Logs as CSV/JSON | ✅ **IMPLEMENTED:** `on_audit_export_csv`, `on_audit_export_json`, `on_pipeline_export_csv`, `on_pipeline_export_json` callbacks in app.py. Export buttons on Audit and Pipeline pages. Uses `pandas.to_csv()` and `json.dumps()`. All exports log to audit trail and trigger browser download via `taipy.gui.download()`. | Medium | feature, compliance |
 | card-012 | Image PII Detection via OCR | Accept PNG/JPG uploads, extract text via Tesseract OCR, apply Presidio PII detection | Low | feature, ocr |
 | card-013 | Role-Based Authentication | User login with email/password and RBAC (Admin, Compliance Officer, Developer, Researcher). Store hashed passwords. | High | feature, security |
 | card-014 | Compliance Review Notifications | Email/in-app notifications 24h before scheduled appointments with card details | Medium | feature, compliance |
@@ -68,12 +68,12 @@ These features from the demo cards are still **in backlog**:
 - ⚠️ Encrypt operator partially done (backend works, UI key management missing)
 - ❌ Multiple NER models marked out of scope
 
-**New v2 Features:** 9 additional features not in original PoC
-- CSV batch jobs, Kanban pipeline, audit log, attestation, telemetry, Auth0, scheduler, MongoDB, REST API
+**New v2 Features:** 10 additional features not in original PoC
+- CSV batch jobs, Kanban pipeline, audit log, attestation, telemetry, Auth0, scheduler, MongoDB, REST API, audit/pipeline export
 
-**Remaining Backlog:** 5 stories
-- 3 high/medium priority: Audit export, RBAC, notifications
-- 2 medium priority: File attachments, OCR
+**Remaining Backlog:** 4 stories
+- 1 high priority: RBAC
+- 3 medium/low priority: notifications, file attachments, OCR
 
 ## Recommendations
 

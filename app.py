@@ -5014,22 +5014,29 @@ def on_audit_clear(state):
     _refresh_audit(state)
 
 
+_AUDIT_CSV_COLUMNS = ["timestamp", "actor", "action", "resource_type", "resource_id", "details", "severity"]
+_PIPELINE_CSV_COLUMNS = ["id", "title", "status", "priority", "assignee", "labels", "attested", "created_at", "updated_at"]
+
+
 def on_audit_export_csv(state):
     """Export the audit log to a CSV file download."""
     try:
         entries = store.list_audit(limit=10_000)
-        df = pd.DataFrame([
-            {
-                "timestamp": e.timestamp,
-                "actor": e.actor,
-                "action": e.action,
-                "resource_type": e.resource_type,
-                "resource_id": e.resource_id,
-                "details": e.details,
-                "severity": e.severity,
-            }
-            for e in entries
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "timestamp": e.timestamp,
+                    "actor": e.actor,
+                    "action": e.action,
+                    "resource_type": e.resource_type,
+                    "resource_id": e.resource_id,
+                    "details": e.details,
+                    "severity": e.severity,
+                }
+                for e in entries
+            ],
+            columns=_AUDIT_CSV_COLUMNS,
+        )
         csv_bytes = df.to_csv(index=False).encode("utf-8")
         store.log_user_action("user", "audit.export_csv", "audit", "", f"Exported {len(entries)} entries")
         download(state, content=csv_bytes, name="audit_log.csv")
@@ -5066,20 +5073,23 @@ def on_pipeline_export_csv(state):
     """Export all pipeline cards to a CSV file download."""
     try:
         cards = store.list_cards()
-        df = pd.DataFrame([
-            {
-                "id": c.id,
-                "title": c.title,
-                "status": c.status,
-                "priority": c.priority,
-                "assignee": c.assignee,
-                "labels": ";".join(c.labels),
-                "attested": c.attested,
-                "created_at": c.created_at,
-                "updated_at": c.updated_at,
-            }
-            for c in cards
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "status": c.status,
+                    "priority": c.priority,
+                    "assignee": c.assignee,
+                    "labels": ";".join(c.labels),
+                    "attested": c.attested,
+                    "created_at": c.created_at,
+                    "updated_at": c.updated_at,
+                }
+                for c in cards
+            ],
+            columns=_PIPELINE_CSV_COLUMNS,
+        )
         csv_bytes = df.to_csv(index=False).encode("utf-8")
         store.log_user_action("user", "pipeline.export_csv", "pipeline", "", f"Exported {len(cards)} cards")
         download(state, content=csv_bytes, name="pipeline_cards.csv")

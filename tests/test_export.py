@@ -299,3 +299,25 @@ class TestExportSerializationLogic:
         roundtrip = json.loads(json_bytes.decode("utf-8"))
         assert len(roundtrip) == 2
         assert all("title" in d for d in roundtrip)
+
+    def test_audit_csv_columns_stable_when_empty(self):
+        """CSV schema must have headers even when the store is empty."""
+        if not _PANDAS_AVAILABLE:
+            pytest.skip("pandas not available")
+        expected_cols = ["timestamp", "actor", "action", "resource_type", "resource_id", "details", "severity"]
+        empty_df = pd.DataFrame([], columns=expected_cols)
+        csv_bytes = empty_df.to_csv(index=False).encode("utf-8")
+        roundtrip = pd.read_csv(io.BytesIO(csv_bytes))
+        assert list(roundtrip.columns) == expected_cols
+        assert len(roundtrip) == 0
+
+    def test_pipeline_csv_columns_stable_when_empty(self):
+        """CSV schema must have headers even when there are no cards."""
+        if not _PANDAS_AVAILABLE:
+            pytest.skip("pandas not available")
+        expected_cols = ["id", "title", "status", "priority", "assignee", "labels", "attested", "created_at", "updated_at"]
+        empty_df = pd.DataFrame([], columns=expected_cols)
+        csv_bytes = empty_df.to_csv(index=False).encode("utf-8")
+        roundtrip = pd.read_csv(io.BytesIO(csv_bytes))
+        assert list(roundtrip.columns) == expected_cols
+        assert len(roundtrip) == 0
