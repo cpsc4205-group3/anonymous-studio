@@ -17,7 +17,6 @@ from __future__ import annotations
 import io
 import json
 import dataclasses
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
