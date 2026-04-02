@@ -134,6 +134,8 @@ echo "${ANON_MODE:-development}"
 
 **New:** Export audit logs and pipeline history in CSV or JSON formats for compliance documentation. See [Export Documentation](docs/export-functionality.md).
 
+> **📊 Feature Status:** See [`docs/feature-parity.md`](docs/feature-parity.md) for a complete comparison of v2 vs. original PoC features, including what's implemented, what's in progress, and what's still in backlog.
+
 ---
 
 ## Getting Started

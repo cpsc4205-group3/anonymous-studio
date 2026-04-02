@@ -27,8 +27,9 @@ import os
 import pytest
 
 from store.memory import MemoryStore
-from store.models import PIISession, PipelineCard, Appointment, AuditEntry
+from store.models import PIISession, PipelineCard, Appointment, AuditEntry, UserAccount
 from store import get_store, _reset_store
+from services.local_auth import hash_password
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -100,6 +101,30 @@ class TestPIISession:
             store.add_session(s)
         result = store.list_sessions_by_card(card.id)
         assert len(result) == 3
+
+    def test_attach_session_to_card_updates_session_id(self, store):
+        """Attaching a session to a card updates the card's session_id field."""
+        card = PipelineCard(title="Work Item")
+        store.add_card(card)
+        session = PIISession(title="Run 1", pipeline_card_id=card.id)
+        store.add_session(session)
+        store.update_card(card.id, session_id=session.id)
+        updated = store.get_card(card.id)
+        assert updated.session_id == session.id
+
+    def test_attach_session_audit_entry(self, store):
+        """Logging session.attach emits a retrievable audit entry on the card."""
+        card = PipelineCard(title="Audit Card")
+        store.add_card(card)
+        session = PIISession(title="Run A", pipeline_card_id=card.id)
+        store.add_session(session)
+        store.log_user_action("user", "session.attach", "card", card.id,
+                              f"Session {session.id[:8]} attached")
+        audit = store.list_audit()
+        assert any(
+            e.action == "session.attach" and e.resource_id == card.id
+            for e in audit
+        )
 
     def test_update_session_changes_field(self, store):
         s = PIISession(title="Before")
@@ -366,6 +391,51 @@ class TestAuditLog:
         assert store.list_audit()[0].severity == "warning"
 
 
+class TestUsers:
+    def test_create_user_roundtrip(self, store):
+        user = UserAccount(
+            email="tester@example.com",
+            full_name="Test User",
+            role="Developer",
+            password_hash=hash_password("Example123!"),
+        )
+        created = store.create_user(user)
+        assert created.id == user.id
+        assert store.get_user(user.id).email == "tester@example.com"
+
+    def test_get_user_by_email_normalizes_case(self, store):
+        user = UserAccount(
+            email="tester@example.com",
+            role="Researcher",
+            password_hash=hash_password("Example123!"),
+        )
+        store.create_user(user)
+        fetched = store.get_user_by_email("TESTER@example.com")
+        assert fetched is not None
+        assert fetched.id == user.id
+
+    def test_update_user_changes_last_login(self, store):
+        user = UserAccount(
+            email="tester@example.com",
+            role="Admin",
+            password_hash=hash_password("Example123!"),
+        )
+        store.create_user(user)
+        updated = store.update_user(user.id, last_login_at="2026-03-24T12:00:00")
+        assert updated is not None
+        assert updated.last_login_at == "2026-03-24T12:00:00"
+
+    def test_list_users_returns_created_user(self, store):
+        user = UserAccount(
+            email="tester@example.com",
+            role="Compliance Officer",
+            password_hash=hash_password("Example123!"),
+        )
+        store.create_user(user)
+        emails = [entry.email for entry in store.list_users()]
+        assert "tester@example.com" in emails
+
+
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
 class TestStats:
@@ -413,6 +483,60 @@ class TestSeedData:
         assert len(store.list_cards()) == 0
         assert len(store.list_appointments()) == 0
         assert len(store.list_audit()) == 0
+
+    # ── Sprint 2 status: backlog verification ──────────────────────────────────
+    # After sprint 2, card-011 (Export) moved from backlog to done.
+    # Remaining backlog: 6 cards.
+    #   card-004  Patient Records HIPAA Compliance     (high priority)
+    #   card-005  Vendor Contract Data Review          (low priority)
+    #   card-012  Image PII Detection via OCR          (low priority)
+    #   card-013  Role-Based Authentication            (high priority)
+    #   card-014  Compliance Review Notifications      (medium priority)
+    #   card-015  File Attachments on Pipeline Cards   (medium priority)
+
+    def test_sprint_1_retro_backlog_card_ids(self, seeded_store):
+        """Backlog card IDs must exactly match the current backlog."""
+        backlog_ids = {c.id for c in seeded_store.list_cards(status="backlog")}
+        expected = {
+            "card-004",  # Patient Records HIPAA Compliance
+            "card-005",  # Vendor Contract Data Review
+            "card-012",  # Image PII Detection via OCR
+            "card-013",  # Role-Based Authentication
+            "card-014",  # Compliance Review Notifications
+            "card-015",  # File Attachments on Pipeline Cards
+        }
+        assert backlog_ids == expected
+
+    def test_sprint_1_retro_backlog_count(self, seeded_store):
+        """Six cards must be in backlog after sprint 2."""
+        assert len(seeded_store.list_cards(status="backlog")) == 6
+
+    def test_sprint_1_retro_done_card_ids(self, seeded_store):
+        """Done card IDs must match completed work through sprint 2."""
+        done_ids = {c.id for c in seeded_store.list_cards(status="done")}
+        expected = {
+            "card-003",  # Research Dataset Anonymization (attested)
+            "card-006",  # Allowlist / Denylist Support
+            "card-008",  # ORGANIZATION Entity Support
+            "card-009",  # REST API for PII Detection
+            "card-010",  # MongoDB Persistence Layer
+            "card-011",  # Export Audit Logs as CSV/JSON
+        }
+        assert done_ids == expected
+
+    def test_sprint_1_retro_in_progress_card_ids(self, seeded_store):
+        """In-progress card IDs must match the sprint 1 retro active work."""
+        in_progress_ids = {c.id for c in seeded_store.list_cards(status="in_progress")}
+        expected = {
+            "card-002",  # HR Records PII Scrub
+            "card-007",  # Encrypt Operator Key Management (partial)
+        }
+        assert in_progress_ids == expected
+
+    def test_sprint_1_retro_review_card_ids(self, seeded_store):
+        """Review card IDs must match the sprint 1 retro review queue."""
+        review_ids = {c.id for c in seeded_store.list_cards(status="review")}
+        assert review_ids == {"card-001"}  # Q1 Customer Export Anonymization
 
 
 # ── get_store() factory ───────────────────────────────────────────────────────

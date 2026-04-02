@@ -157,3 +157,17 @@ class AuditEntry:
     resource_id: str   = ""
     details: str       = ""
     severity: str      = "info"  # info | warning | critical
+
+@dataclass
+class UserAccount:
+    """Application user record for local email/password authentication."""
+
+    id: str                      = field(default_factory=_uid)
+    email: str                   = ""
+    password_hash: str           = ""
+    role: str                    = "Researcher"
+    full_name: str               = ""
+    is_active: bool              = True
+    created_at: str              = field(default_factory=_now)
+    updated_at: str              = field(default_factory=_now)
+    last_login_at: Optional[str] = None

@@ -1,5 +1,48 @@
 """Taipy page markup definitions for Anonymous Studio."""
 
+
+# ─── Shared Store Settings dialog (used by DASH and JOBS) ────────────────────
+_STORE_SETTINGS_DIALOG = ""
+AUTH = """
+<|part|class_name=pg pg-auth|
+
+<|part|class_name=page-hd|
+<|Access Control|text|class_name=page-title|>
+<|Sign in or create an account to continue. Role permissions control which pages and compliance features you can use.|text|class_name=page-sub|>
+|>
+
+<|part|render={auth_status_md!=""}|class_name=panel|
+<|{auth_status_md}|text|mode=md|class_name=audit-stmt|>
+|>
+
+<|part|render={not is_authenticated}|class_name=settings-panel|
+<|{auth_mode}|selector|lov={auth_mode_lov}|dropdown=True|label=Mode|on_change=on_auth_mode_change|class_name=fullwidth|>
+<|{auth_full_name}|input|label=Full Name|class_name=fullwidth|render={auth_mode=="Register"}|>
+<|{auth_email}|input|label=Email|class_name=fullwidth|>
+<|{auth_password}|input|password=True|label=Password|class_name=fullwidth|>
+<|{auth_confirm_password}|input|password=True|label=Confirm Password|class_name=fullwidth|render={auth_mode=="Register"}|>
+<|{auth_role}|selector|lov={auth_role_lov}|dropdown=True|label=Role|class_name=fullwidth|render={auth_mode=="Register"}|>
+
+<|layout|columns=1 1|gap=8px|
+<|Sign In|button|on_action=on_auth_login|render={auth_mode=="Sign In"}|>
+<|Create Account|button|on_action=on_auth_register|render={auth_mode=="Register"}|>
+<|Switch Mode|button|on_action=on_auth_toggle_mode|class_name=secondary|>
+<|Clear|button|on_action=on_auth_clear|class_name=secondary|>
+|>
+|>
+<|part|render={is_authenticated}|class_name=settings-panel|
+<|{auth_profile_md}|text|mode=md|class_name=audit-stmt|>
+<|{auth_access_md}|text|mode=md|class_name=inline-hint|>
+<|layout|columns=1 1|gap=8px|
+<|Go to Dashboard|button|on_action=on_auth_go_dashboard|>
+<|Sign Out|button|on_action=on_auth_logout|class_name=secondary|>
+|>
+|>
+
+|>
+""
+"""
+
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 DASH = """
 <|part|class_name=pg pg-dashboard|
@@ -8,13 +51,11 @@ DASH = """
 <|Dashboard|text|class_name=page-title|>
 <|Live pipeline status, recent activity, and upcoming compliance reviews|text|class_name=page-sub|hover_text=Live pipeline status, recent activity, and upcoming compliance reviews|>
 |>
-
 <|part|class_name=nlp-banner|
 <|Settings|button|on_action=on_store_settings_open|class_name=secondary plain|hover_text=Change store backend|>
 <|Store|text|class_name=banner-label ml-auto|>
 <|{store_status_label}|text|class_name=store-mode-pill|hover_text={store_status_hover}|>
 |>
-
 <|{store_settings_open}|dialog|title=Store Settings|width=640px|
 <|{store_backend_sel}|selector|lov={store_backend_lov}|label=Backend|class_name=fullwidth|>
 <|part|render={store_backend_sel=="mongo"}|
@@ -31,7 +72,24 @@ DASH = """
 <|Cancel|button|on_action=on_store_settings_close|class_name=secondary|>
 |>
 |>
+"""
 
+
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+DASH = """
+<|part|class_name=pg pg-dashboard|
+
+<|part|class_name=page-hd|
+<|Dashboard|text|class_name=page-title|>
+<|Live pipeline status, recent activity, and upcoming compliance reviews|text|class_name=page-sub|hover_text=Live pipeline status, recent activity, and upcoming compliance reviews|>
+|>
+
+<|part|class_name=nlp-banner|
+<|Settings|button|on_action=on_store_settings_open|class_name=secondary plain|hover_text=Change store backend|>
+<|Store|text|class_name=banner-label ml-auto|>
+<|{store_status_label}|text|class_name=store-mode-pill|hover_text={store_status_hover}|>
+|>
+""" + _STORE_SETTINGS_DIALOG + """
 <|part|class_name=dash-toolbar|
 <|layout|columns=1 2 2 4 3|gap=8px|
 <|Refresh|button|on_action=on_refresh_dashboard|class_name=secondary|>
@@ -210,24 +268,7 @@ JOBS = """
 <|{raw_input_status_label}|text|class_name=store-mode-pill|hover_text={raw_input_status_hover}|>
 <|Settings|button|on_action=on_store_settings_open|class_name=secondary plain ml-auto|hover_text=Change store backend|>
 |>
-
-<|{store_settings_open}|dialog|title=Store Settings|width=640px|
-<|{store_backend_sel}|selector|lov={store_backend_lov}|label=Backend|class_name=fullwidth|>
-<|part|render={store_backend_sel=="mongo"}|
-<|{store_mongo_uri}|input|label=MongoDB URI|class_name=fullwidth|hover_text=e.g. mongodb://localhost:27017/anon_studio or mongodb+srv://user:pass@cluster/db|>
-|>
-<|part|render={store_backend_sel=="duckdb"}|
-<|{store_duckdb_path}|input|label=DuckDB file path|class_name=fullwidth|hover_text=e.g. /tmp/anon_studio.duckdb for local persistent single-node storage.|>
-|>
-<|part|render={store_settings_msg!=""}|
-<|{store_settings_msg}|text|class_name=inline-hint|>
-|>
-<|layout|columns=1 1|gap=8px|
-<|Apply|button|on_action=on_store_apply|>
-<|Cancel|button|on_action=on_store_settings_close|class_name=secondary|>
-|>
-|>
-
+""" + _STORE_SETTINGS_DIALOG + """
 <|layout|columns=2 1|gap=24px|
 <|part|
 <|part|class_name=panel|
@@ -314,6 +355,19 @@ JOBS = """
 <|layout|columns=1 1|gap=16px|
 <|{stats_entity_rows}|table|columns=Entity Type;Count|page_size=8|show_all=False|>
 <|{stats_entity_rows}|chart|type=plotly|figure={stats_entity_chart_figure}|height=260px|>
+|>
+<|part|render={job_before_after_visible}|
+<|Before / After Sample|text|class_name=sh|>
+<|layout|columns=1 1|gap=16px|
+<|part|class_name=settings-panel|
+<|Before (original)|text|class_name=sh sh-top|>
+<|{job_before_sample_data}|table|page_size=3|show_all=False|>
+|>
+<|part|class_name=settings-panel|
+<|After (anonymized)|text|class_name=sh sh-top|>
+<|{job_after_sample_data}|table|page_size=3|show_all=False|>
+|>
+|>
 |>
 <|Preview (first 50 rows)|text|class_name=sh|>
 <|{preview_data}|table|page_size=8|show_all=False|>
@@ -418,7 +472,7 @@ PIPELINE = """
 <|layout|columns=1 1 1 1|gap=14px|
 <|part|class_name=kc kc-gray|
 <|part|class_name=kh kh-gray|
-Backlog <|{kanban_backlog_len}|text|class_name=kh-cnt|>
+Intake <|{kanban_backlog_len}|text|class_name=kh-cnt|>
 |>
 <|{kanban_backlog}|table|selected={backlog_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|>
 |>
@@ -498,13 +552,11 @@ Done <|{kanban_done_len}|text|class_name=kh-cnt|>
 <|{pipeline_all}|table|selected={pipeline_all_sel}|columns=Title;Priority;Assignee;Job;Labels;Attested;Updated|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|show_all=False|page_size=10|on_action=on_card_pick|>
 |>
 
-<|Export Pipeline Data|text|class_name=sh sh-top|>
-<|part|class_name=panel|
-<|layout|columns=1 1 6|gap=8px|
-<|Export All CSV|button|on_action=on_pipeline_export_csv|class_name=secondary|hover_text=Download all pipeline cards as CSV|>
-<|Export All JSON|button|on_action=on_pipeline_export_json|class_name=secondary|hover_text=Download all pipeline cards as JSON with full metadata|>
-<|part|>
-|>
+<|Export Pipeline Data|text|class_name=sh|>
+<|layout|columns=1 1 6|gap=12px|
+<|Export All CSV|button|on_action=on_pipeline_export_csv|class_name=secondary|>
+<|Export All JSON|button|on_action=on_pipeline_export_json|class_name=secondary|>
+<|part|>|>
 |>
 
 |>
@@ -601,11 +653,11 @@ AUDIT = """
 
 <|{audit_table}|table|columns=Time;Actor;Action;Resource;Details;Severity|cell_class_name[Severity]=severity_cell_class|show_all=False|page_size=20|>
 
-<|Export|text|class_name=sh sh-top|>
-<|layout|columns=1 1 8|gap=8px|
-<|Export CSV|button|on_action=on_audit_export_csv|class_name=secondary|hover_text=Download current filtered audit logs as CSV|>
-<|Export JSON|button|on_action=on_audit_export_json|class_name=secondary|hover_text=Download current filtered audit logs as JSON|>
-<|part|>
+<|Export|text|class_name=sh|>
+<|layout|columns=1 1 6|gap=12px|
+<|Export CSV|button|on_action=on_audit_export_csv|class_name=secondary|>
+<|Export JSON|button|on_action=on_audit_export_json|class_name=secondary|>
+<|part|>|>
 |>
 
 |>
@@ -634,7 +686,6 @@ NLP Engine: <|{spacy_status}|text|>
 <|Anonymize|button|on_action=on_qt_anonymize|>
 <|Settings|button|on_action=on_qt_settings_open|class_name=secondary|>
 <|Load Sample|button|on_action=on_qt_load_sample|class_name=secondary|>
-<|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
 <|Clear|button|on_action=on_qt_clear|class_name=secondary|>
 |>
 
@@ -686,12 +737,16 @@ NLP Engine: <|{spacy_status}|text|>
 
 <|part|class_name=panel entity-evidence-panel|
 <|3. Entity Evidence|text|class_name=sh sh-top|>
-<|{qt_entity_rows}|table|columns=Entity Type;Text;Confidence;Confidence Band;Span;Recognizer;Rationale|show_all=False|page_size=8|filter=True|sortable=True|>
+<|{qt_entity_rows}|table|columns={qt_entity_columns}|show_all=False|page_size=8|filter=True|sortable=True|>
 <|{qt_entity_chart}|chart|type=plotly|figure={qt_entity_figure}|height=300px|render={qt_entity_chart_visible}|>
 |>
 
 <|Saved Sessions|text|class_name=sh|>
 <|part|class_name=panel|
+<|layout|columns=5 1|gap=8px|
+<|{qt_card_f}|selector|lov={qt_card_opts}|dropdown=True|label=Attach to card (optional)|class_name=fullwidth|hover_text=Link this session to a pipeline card for traceability and auditing.|>
+<|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
+|>
 <|{qt_sessions_data}|table|columns=ID;Title;Operator;Entities;Created|show_all=False|page_size=6|filter=True|sortable=True|on_action=on_qt_session_select|>
 <|Load Session|button|on_action=on_qt_load_session|class_name=secondary|render={qt_selected_session!=""}|>
 |>
@@ -711,6 +766,10 @@ NLP Engine: <|{spacy_status}|text|>
 <|{qt_entities}|selector|lov={qt_all_entities}|multiple=True|dropdown=True|filter=True|label=Entity types to detect|class_name=fullwidth|>
 <|{qt_allowlist_text}|input|label=Allowlist — words to never flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "John, Acme Corp" — these exact words will be excluded from PII detection even if the model flags them.|>
 <|{qt_denylist_text}|input|label=Denylist — words to always flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "MyCompany, ProjectX" — these words will always be treated as PII regardless of model confidence.|>
+<|layout|columns=auto 1|gap=8px|
+<|{qt_show_rationale}|toggle|label=Show detection rationale|on_change=on_qt_show_rationale_change|hover_text=When enabled, the Entity Evidence table shows the Recognizer and Rationale columns explaining why each span was flagged as PII.|>
+<|part|>
+|>
 <|part|render={qt_operator=="synthesize"}|
 <|Synthetic Output (LLM/Faker)|text|class_name=sh sh-top|>
 <|{qt_synth_provider}|selector|lov={qt_synth_provider_lov}|dropdown=True|label=Synthetic provider|class_name=fullwidth|hover_text=faker uses local deterministic synthesis; openai/azure_openai call an LLM and fall back to faker on failure.|>
@@ -841,6 +900,7 @@ NAV = """
 
 PAGES = {
     "/":          NAV,
+    "auth":       AUTH,
     "dashboard":  DASH,
     "analyze":    QT,
     "jobs":       JOBS,

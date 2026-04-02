@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 from store.base import StoreBase
 from store.models import (
     _now, _uid,
-    PIISession, PipelineCard, Appointment, AuditEntry,
+    PIISession, PipelineCard, Appointment, AuditEntry, UserAccount,
 )
 
 
@@ -37,6 +37,7 @@ class MemoryStore(StoreBase):
 
     def __init__(self, seed: bool = True):
         self._sessions: Dict[str, PIISession] = {}
+        self._users: Dict[str, UserAccount] = {}
         self._cards: Dict[str, PipelineCard] = {}
         self._appointments: Dict[str, Appointment] = {}
         self._audit: List[AuditEntry] = []
@@ -98,6 +99,32 @@ class MemoryStore(StoreBase):
             f"Updated session: {', '.join(kwargs.keys())}",
         )
         return session
+
+    def create_user(self, user: UserAccount) -> UserAccount:
+        self._users[user.id] = user
+        self._log("system", "auth.register", "user", user.id, f"Registered {user.email}")
+        return user
+
+    def get_user(self, user_id: str) -> Optional[UserAccount]:
+        return self._users.get(user_id)
+
+    def get_user_by_email(self, email: str) -> Optional[UserAccount]:
+        target = str(email or "").strip().lower()
+        return next((u for u in self._users.values() if u.email.lower() == target), None)
+
+    def update_user(self, user_id: str, **kwargs) -> Optional[UserAccount]:
+        user = self._users.get(user_id)
+        if not user:
+            return None
+        for k, v in kwargs.items():
+            if hasattr(user, k):
+                setattr(user, k, v)
+        user.updated_at = _now()
+        self._log("system", "auth.user_update", "user", user_id, f"Updated user: {', '.join(kwargs.keys())}")
+        return user
+
+    def list_users(self) -> List[UserAccount]:
+        return sorted(self._users.values(), key=lambda u: (u.created_at, u.email))
 
     # ── Pipeline Cards ─────────────────────────────────────────────────────────
 
@@ -311,17 +338,18 @@ class MemoryStore(StoreBase):
                     "Pass allow_list= to analyzer.analyze() and use "
                     "ad_hoc_recognizers=[PatternRecognizer(deny_list=...)] for denylist."
                 ),
-                status="backlog", priority="medium",
+                status="done", priority="medium",
                 labels=["feature", "pii-engine"],
             ),
             PipelineCard(
                 id="card-007", title="Encrypt Operator Key Management",
                 description=(
-                    "Add UI field for AES encryption key on PII Text page. "
-                    "Support 128/192/256-bit keys. Store key in env var, not hardcoded. "
-                    "Enable DeanonymizeEngine decrypt round-trip."
+                    "Implement encrypt operator in pii_engine.py. Add 'encrypt' option "
+                    "to UI operator selector. Add UI field for AES encryption key "
+                    "(128/192/256-bit). Store key securely via env var (ANON_ENCRYPT_KEY). "
+                    "Enable DeanonymizeEngine decrypt round-trip for reversible anonymization."
                 ),
-                status="backlog", priority="medium",
+                status="in_progress", priority="medium",
                 labels=["feature", "security"],
             ),
             PipelineCard(
@@ -331,7 +359,7 @@ class MemoryStore(StoreBase):
                     "Configure ORG→ORGANIZATION NLP mapping with 0.4 confidence "
                     "multiplier to reduce false positives."
                 ),
-                status="backlog", priority="low",
+                status="done", priority="low",
                 labels=["feature", "pii-engine"],
             ),
             PipelineCard(
@@ -341,7 +369,7 @@ class MemoryStore(StoreBase):
                     "and pipeline CRUD using FastAPI. Add API key authentication "
                     "and Swagger documentation."
                 ),
-                status="backlog", priority="high",
+                status="done", priority="high",
                 labels=["feature", "api"],
             ),
             PipelineCard(
@@ -351,7 +379,7 @@ class MemoryStore(StoreBase):
                     "cards, appointments, and audit logs. Read MONGODB_URI from env. "
                     "Replace in-memory store for production use."
                 ),
-                status="backlog", assignee="Sakshi Patel", priority="critical",
+                status="done", assignee="Sakshi Patel", priority="critical",
                 labels=["feature", "infrastructure"],
             ),
             PipelineCard(
@@ -360,7 +388,7 @@ class MemoryStore(StoreBase):
                     "Add download buttons to export audit log and pipeline data "
                     "in CSV and JSON formats for compliance documentation sharing."
                 ),
-                status="backlog", priority="medium",
+                status="done", priority="medium",
                 labels=["feature", "compliance"],
             ),
             PipelineCard(
@@ -439,3 +467,34 @@ class MemoryStore(StoreBase):
                   "Moved 'HR Records PII Scrub' from backlog → in_progress")
         self._log("diamond.hogans", "compliance.attest", "card", "card-003",
                   "Attested research dataset")
+
+        from services.local_auth import hash_password
+
+        demo_users = [
+            UserAccount(
+                email="admin@anonstudio.local",
+                full_name="Admin User",
+                role="Admin",
+                password_hash=hash_password("AdminPass123!"),
+            ),
+            UserAccount(
+                email="compliance@anonstudio.local",
+                full_name="Compliance Officer",
+                role="Compliance Officer",
+                password_hash=hash_password("Compliance123!"),
+            ),
+            UserAccount(
+                email="developer@anonstudio.local",
+                full_name="Developer User",
+                role="Developer",
+                password_hash=hash_password("Developer123!"),
+            ),
+            UserAccount(
+                email="researcher@anonstudio.local",
+                full_name="Researcher User",
+                role="Researcher",
+                password_hash=hash_password("Research123!"),
+            ),
+        ]
+        for user in demo_users:
+            self._users[user.id] = user
