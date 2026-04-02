@@ -11,26 +11,15 @@ import dataclasses
 import json
 import os
 import tempfile
-import threading
 from typing import Any, Dict, List, Optional
 
 from store.base import StoreBase
-from store.models import PIISession, PipelineCard, Appointment, AuditEntry, _now
+from store.models import PIISession, PipelineCard, Appointment, AuditEntry, UserAccount, _now
 
 
 _VALID_CARD_STATUSES = frozenset({"backlog", "in_progress", "review", "done"})
 _VALID_APPT_STATUSES = frozenset({"scheduled", "completed", "cancelled"})
 _VALID_SEVERITIES = frozenset({"info", "warning", "critical"})
-
-# Allowlist: maps each known table to its single sort column.
-# Used to validate arguments before they are interpolated into SQL, preventing
-# SQL injection if this code is ever called with unexpected table/column values.
-_SORT_COLUMN: Dict[str, str] = {
-    "pii_sessions":   "created_at",
-    "pipeline_cards": "updated_at",
-    "appointments":   "scheduled_for",
-    "audit_log":      "timestamp",
-}
 
 
 def _default_duckdb_path() -> str:
@@ -62,10 +51,6 @@ class DuckDBStore(StoreBase):
         self._path = os.path.abspath(path or _default_duckdb_path())
         os.makedirs(os.path.dirname(self._path), exist_ok=True)
         self._conn = duckdb.connect(self._path)
-        # RLock: the scheduler daemon writes from its own thread concurrently with
-        # GUI callbacks. Reentrant so that _log -> _upsert paths on the same thread
-        # don't deadlock.
-        self._lock = threading.RLock()
         self._ensure_schema()
         if seed and not self._has_any_data():
             self._seed_demo_data()
@@ -73,88 +58,91 @@ class DuckDBStore(StoreBase):
     # ── Schema / low-level helpers ───────────────────────────────────────────
 
     def _ensure_schema(self) -> None:
-        with self._lock:
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pii_sessions (
-                  id VARCHAR PRIMARY KEY,
-                  created_at VARCHAR,
-                  payload TEXT NOT NULL
-                );
-                """
-            )
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pipeline_cards (
-                  id VARCHAR PRIMARY KEY,
-                  updated_at VARCHAR,
-                  payload TEXT NOT NULL
-                );
-                """
-            )
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS appointments (
-                  id VARCHAR PRIMARY KEY,
-                  scheduled_for VARCHAR,
-                  payload TEXT NOT NULL
-                );
-                """
-            )
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS audit_log (
-                  id VARCHAR PRIMARY KEY,
-                  timestamp VARCHAR,
-                  payload TEXT NOT NULL
-                );
-                """
-            )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pii_sessions (
+              id VARCHAR PRIMARY KEY,
+              created_at VARCHAR,
+              payload TEXT NOT NULL
+            );
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pipeline_cards (
+              id VARCHAR PRIMARY KEY,
+              updated_at VARCHAR,
+              payload TEXT NOT NULL
+            );
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS appointments (
+              id VARCHAR PRIMARY KEY,
+              scheduled_for VARCHAR,
+              payload TEXT NOT NULL
+            );
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_log (
+              id VARCHAR PRIMARY KEY,
+              timestamp VARCHAR,
+              payload TEXT NOT NULL
+            );
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+              id VARCHAR PRIMARY KEY,
+              created_at VARCHAR,
+              payload TEXT NOT NULL
+            );
+            """
+        )
 
     def _has_any_data(self) -> bool:
-        with self._lock:
-            row = self._conn.execute(
-                """
-                SELECT
-                  (SELECT COUNT(*) FROM pii_sessions)
-                  + (SELECT COUNT(*) FROM pipeline_cards)
-                  + (SELECT COUNT(*) FROM appointments)
-                  + (SELECT COUNT(*) FROM audit_log)
-                """
-            ).fetchone()
+        row = self._conn.execute(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM pii_sessions)
+              + (SELECT COUNT(*) FROM pipeline_cards)
+              + (SELECT COUNT(*) FROM appointments)
+              + (SELECT COUNT(*) FROM audit_log)
+              + (SELECT COUNT(*) FROM users)
+            """
+        ).fetchone()
         return bool(row and int(row[0]) > 0)
 
     def _upsert(self, table: str, rid: str, sort_value: str, payload: str) -> None:
-        if table not in _SORT_COLUMN:
-            raise ValueError(f"Unknown table: {table!r}")
-        sort_col = _SORT_COLUMN[table]
-        with self._lock:
-            self._conn.execute(f"DELETE FROM {table} WHERE id = ?", [rid])
-            self._conn.execute(
-                f"INSERT INTO {table} (id, {sort_col}, payload) VALUES (?, ?, ?)",
-                [rid, sort_value, payload],
-            )
+        sort_col = {
+            "pii_sessions": "created_at",
+            "pipeline_cards": "updated_at",
+            "appointments": "scheduled_for",
+            "audit_log": "timestamp",
+            "users": "created_at",
+        }[table]
+        self._conn.execute(f"DELETE FROM {table} WHERE id = ?", [rid])
+        self._conn.execute(
+            f"INSERT INTO {table} (id, {sort_col}, payload) VALUES (?, ?, ?)",
+            [rid, sort_value, payload],
+        )
 
     def _get_payload(self, table: str, rid: str) -> Optional[str]:
-        if table not in _SORT_COLUMN:
-            raise ValueError(f"Unknown table: {table!r}")
-        with self._lock:
-            row = self._conn.execute(f"SELECT payload FROM {table} WHERE id = ?", [rid]).fetchone()
+        row = self._conn.execute(f"SELECT payload FROM {table} WHERE id = ?", [rid]).fetchone()
         return str(row[0]) if row else None
 
     def _list_payloads(self, table: str, order_col: str, desc: bool = True, limit: Optional[int] = None) -> List[str]:
-        if table not in _SORT_COLUMN:
-            raise ValueError(f"Unknown table: {table!r}")
-        if order_col != _SORT_COLUMN[table]:
-            raise ValueError(f"Invalid order_col {order_col!r} for table {table!r}")
         order = "DESC" if desc else "ASC"
         sql = f"SELECT payload FROM {table} ORDER BY {order_col} {order}"
         params: List[Any] = []
         if isinstance(limit, int) and limit > 0:
             sql += " LIMIT ?"
             params.append(limit)
-        with self._lock:
-            rows = self._conn.execute(sql, params).fetchall()
+        rows = self._conn.execute(sql, params).fetchall()
         return [str(r[0]) for r in rows]
 
     def _log(
@@ -197,6 +185,63 @@ class DuckDBStore(StoreBase):
         payloads = self._list_payloads("pii_sessions", "created_at", desc=True)
         return [_from_payload(PIISession, p) for p in payloads]
 
+    def list_sessions_by_card(self, card_id: str) -> List[PIISession]:
+        rows = self._conn.execute(
+            "SELECT payload FROM pii_sessions "
+            "WHERE json_extract_string(payload::JSON, '$.pipeline_card_id') = ? "
+            "ORDER BY created_at DESC",
+            [card_id],
+        ).fetchall()
+        return [_from_payload(PIISession, str(r[0])) for r in rows]
+
+    def update_session(self, session_id: str, **kwargs) -> Optional[PIISession]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        for k, v in kwargs.items():
+            if hasattr(session, k):
+                setattr(session, k, v)
+        self._upsert("pii_sessions", session.id, session.created_at, _to_payload(session))
+        self._log(
+            "system", "session.update", "session", session_id,
+            f"Updated session: {', '.join(kwargs.keys())}",
+        )
+        return session
+
+    def create_user(self, user: UserAccount) -> UserAccount:
+        self._upsert("users", user.id, user.created_at, _to_payload(user))
+        self._log("system", "auth.register", "user", user.id, f"Registered {user.email}")
+        return user
+
+    def get_user(self, user_id: str) -> Optional[UserAccount]:
+        payload = self._get_payload("users", user_id)
+        return _from_payload(UserAccount, payload) if payload else None
+
+    def get_user_by_email(self, email: str) -> Optional[UserAccount]:
+        rows = self._conn.execute(
+            "SELECT payload FROM users "
+            "WHERE lower(json_extract_string(payload::JSON, '$.email')) = ? "
+            "LIMIT 1",
+            [str(email or "").strip().lower()],
+        ).fetchall()
+        return _from_payload(UserAccount, str(rows[0][0])) if rows else None
+
+    def update_user(self, user_id: str, **kwargs) -> Optional[UserAccount]:
+        user = self.get_user(user_id)
+        if not user:
+            return None
+        for k, v in kwargs.items():
+            if hasattr(user, k):
+                setattr(user, k, v)
+        user.updated_at = _now()
+        self._upsert("users", user.id, user.created_at, _to_payload(user))
+        self._log("system", "auth.user_update", "user", user_id, f"Updated user: {', '.join(kwargs.keys())}")
+        return user
+
+    def list_users(self) -> List[UserAccount]:
+        payloads = self._list_payloads("users", "created_at", desc=False)
+        return [_from_payload(UserAccount, p) for p in payloads]
+
     # ── Pipeline cards ────────────────────────────────────────────────────────
 
     def add_card(self, card: PipelineCard) -> PipelineCard:
@@ -219,10 +264,17 @@ class DuckDBStore(StoreBase):
         if not card:
             return None
         old_status = card.status
+        now_ts = _now()
+        if "status" in kwargs:
+            new_status = kwargs.get("status")
+            if new_status == "done" and old_status != "done":
+                kwargs["done_at"] = kwargs.get("done_at") or now_ts
+            elif old_status == "done" and new_status != "done":
+                kwargs["done_at"] = None
         for k, v in kwargs.items():
             if hasattr(card, k):
                 setattr(card, k, v)
-        card.updated_at = _now()
+        card.updated_at = now_ts
         self._upsert("pipeline_cards", card.id, card.updated_at, _to_payload(card))
 
         if "status" in kwargs and kwargs.get("status") != old_status:
@@ -250,8 +302,7 @@ class DuckDBStore(StoreBase):
         card = self.get_card(card_id)
         if not card:
             return False
-        with self._lock:
-            self._conn.execute("DELETE FROM pipeline_cards WHERE id = ?", [card_id])
+        self._conn.execute("DELETE FROM pipeline_cards WHERE id = ?", [card_id])
         self._log("system", "pipeline.delete", "card", card_id, f"Deleted '{card.title}'", severity="warning")
         return True
 
@@ -307,8 +358,7 @@ class DuckDBStore(StoreBase):
         appt = self.get_appointment(appt_id)
         if not appt:
             return False
-        with self._lock:
-            self._conn.execute("DELETE FROM appointments WHERE id = ?", [appt_id])
+        self._conn.execute("DELETE FROM appointments WHERE id = ?", [appt_id])
         self._log("system", "schedule.delete", "appointment", appt_id, f"Deleted '{appt.title}'", severity="warning")
         return True
 
@@ -344,10 +394,7 @@ class DuckDBStore(StoreBase):
         sessions = self.list_sessions()
         cards = self.list_cards()
         appts = self.list_appointments()
-        with self._lock:
-            audit_count = self._conn.execute(
-                "SELECT COUNT(*) FROM audit_log"
-            ).fetchone()[0]
+        audit = self.list_audit(limit=200000)
 
         entity_freq: Dict[str, int] = {}
         total_entities = 0
@@ -371,7 +418,7 @@ class DuckDBStore(StoreBase):
             "entity_breakdown": entity_freq,
             "pipeline_by_status": status_counts,
             "total_appointments": len(appts),
-            "total_audit_entries": audit_count,
+            "total_audit_entries": len(audit),
             "attested_cards": attested,
         }
 
@@ -391,3 +438,5 @@ class DuckDBStore(StoreBase):
             if entry.severity not in _VALID_SEVERITIES:
                 entry.severity = "info"
             self._upsert("audit_log", entry.id, entry.timestamp, _to_payload(entry))
+        for user in seed_store.list_users():
+            self._upsert("users", user.id, user.created_at, _to_payload(user))

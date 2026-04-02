@@ -1,243 +1,103 @@
 """Taipy page markup definitions for Anonymous Studio."""
 
-from taipy.gui import notify
 
-
-def _dispatch_app_action(state, callback_name: str, *args, **kwargs):
-    """Resolve and call an on_action callback from app.py, forwarding all arguments."""
-    try:
-        from app import __dict__ as app_symbols  # late import avoids circular import at startup
-        callback = app_symbols.get(callback_name)
-        if callback is None:
-            raise AttributeError(f"Missing callback: {callback_name}")
-        return callback(state, *args, **kwargs)
-    except Exception as exc:
-        notify(state, "error", f"Action '{callback_name}' failed: {exc}")
-        return None
-
-
-def _dispatch_app_change(state, callback_name: str, var_name, var_value):
-    """Resolve and call an on_change callback from app.py."""
-    try:
-        from app import __dict__ as app_symbols  # late import avoids circular import at startup
-        callback = app_symbols.get(callback_name)
-        if callback is None:
-            raise AttributeError(f"Missing callback: {callback_name}")
-        return callback(state, var_name, var_value)
-    except Exception:
-        notify(state, "error", f"Change handler '{callback_name}' is unavailable.")
-        return None
-
-
-# ─── on_action wrappers ───────────────────────────────────────────────────────
-
-def on_appt_cancel(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_appt_cancel", *args, **kwargs)
-
-def on_appt_delete(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_appt_delete", *args, **kwargs)
-
-def on_appt_edit(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_appt_edit", *args, **kwargs)
-
-def on_appt_new(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_appt_new", *args, **kwargs)
-
-def on_appt_save(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_appt_save", *args, **kwargs)
-
-def on_appt_select(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_appt_select", *args, **kwargs)
-
-def on_attest_cancel(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_attest_cancel", *args, **kwargs)
-
-def on_attest_confirm(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_attest_confirm", *args, **kwargs)
-
-def on_attest_open(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_attest_open", *args, **kwargs)
-
-def on_audit_clear(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_audit_clear", *args, **kwargs)
-
-def on_audit_filter(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_audit_filter", *args, **kwargs)
-
-def on_card_back(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_back", *args, **kwargs)
-
-def on_card_cancel(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_cancel", *args, **kwargs)
-
-def on_card_delete(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_delete", *args, **kwargs)
-
-def on_card_edit(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_edit", *args, **kwargs)
-
-def on_card_forward(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_forward", *args, **kwargs)
-
-def on_card_history(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_history", *args, **kwargs)
-
-def on_card_history_close(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_history_close", *args, **kwargs)
-
-def on_card_new(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_new", *args, **kwargs)
-
-def on_card_pick(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_pick", *args, **kwargs)
-
-def on_card_save(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_card_save", *args, **kwargs)
-
-def on_dash_go_analyze(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_dash_go_analyze", *args, **kwargs)
-
-def on_dash_seed_demo(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_dash_seed_demo", *args, **kwargs)
-
-def on_download(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_download", *args, **kwargs)
-
-def on_export_audit_csv(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_export_audit_csv", *args, **kwargs)
-
-def on_export_audit_json(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_export_audit_json", *args, **kwargs)
-
-def on_export_telemetry_csv(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_export_telemetry_csv", *args, **kwargs)
-
-def on_file_upload(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_file_upload", *args, **kwargs)
-
-def on_job_adv_close(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_job_adv_close", *args, **kwargs)
-
-def on_job_adv_open(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_job_adv_open", *args, **kwargs)
-
-def on_job_cancel(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_job_cancel", *args, **kwargs)
-
-def on_job_remove(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_job_remove", *args, **kwargs)
-
-def on_menu_action(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_menu_action", *args, **kwargs)
-
-def on_poll_progress(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_poll_progress", *args, **kwargs)
-
-def on_promote_primary(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_promote_primary", *args, **kwargs)
-
-def on_qt_analyze(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_analyze", *args, **kwargs)
-
-def on_qt_anonymize(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_anonymize", *args, **kwargs)
-
-def on_qt_clear(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_clear", *args, **kwargs)
-
-def on_qt_download_anonymized(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_download_anonymized", *args, **kwargs)
-
-def on_qt_download_entities(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_download_entities", *args, **kwargs)
-
-def on_qt_load_sample(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_load_sample", *args, **kwargs)
-
-def on_qt_save_session(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_save_session", *args, **kwargs)
-
-def on_qt_settings_close(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_settings_close", *args, **kwargs)
-
-def on_qt_settings_open(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_qt_settings_open", *args, **kwargs)
-
-def on_refresh_dashboard(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_refresh_dashboard", *args, **kwargs)
-
-def on_refresh_telemetry(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_refresh_telemetry", *args, **kwargs)
-
-def on_select_job(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_select_job", *args, **kwargs)
-
-def on_store_apply(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_store_apply", *args, **kwargs)
-
-def on_store_settings_close(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_store_settings_close", *args, **kwargs)
-
-def on_store_settings_open(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_store_settings_open", *args, **kwargs)
-
-def on_submit_job(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_submit_job", *args, **kwargs)
-
-def on_ui_demo_refresh(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_ui_demo_refresh", *args, **kwargs)
-
-def on_whatif_compare(state, *args, **kwargs):
-    return _dispatch_app_action(state, "on_whatif_compare", *args, **kwargs)
-
-
-# ─── on_change wrappers ───────────────────────────────────────────────────────
-
-def on_dash_filters_change(state, var_name, var_value):
-    return _dispatch_app_change(state, "on_dash_filters_change", var_name, var_value)
-
-def on_qt_ner_model_change(state, var_name, var_value):
-    return _dispatch_app_change(state, "on_qt_ner_model_change", var_name, var_value)
-
-def on_submission_status_change(state, var_name, var_value):
-    return _dispatch_app_change(state, "on_submission_status_change", var_name, var_value)
-
-def on_ui_demo_filters_change(state, var_name, var_value):
-    return _dispatch_app_change(state, "on_ui_demo_filters_change", var_name, var_value)
-
+# ─── Shared Store Settings dialog (used by DASH and JOBS) ────────────────────
+_STORE_SETTINGS_DIALOG = ""
+AUTH = """
+<|part|class_name=pg pg-auth|
+
+<|part|class_name=page-hd|
+<|Access Control|text|class_name=page-title|>
+<|Sign in or create an account to continue. Role permissions control which pages and compliance features you can use.|text|class_name=page-sub|>
+|>
+
+<|part|render={auth_status_md!=""}|class_name=panel|
+<|{auth_status_md}|text|mode=md|class_name=audit-stmt|>
+|>
+
+<|part|render={not is_authenticated}|class_name=settings-panel|
+<|{auth_mode}|selector|lov={auth_mode_lov}|dropdown=True|label=Mode|on_change=on_auth_mode_change|class_name=fullwidth|>
+<|{auth_full_name}|input|label=Full Name|class_name=fullwidth|render={auth_mode=="Register"}|>
+<|{auth_email}|input|label=Email|class_name=fullwidth|>
+<|{auth_password}|input|password=True|label=Password|class_name=fullwidth|>
+<|{auth_confirm_password}|input|password=True|label=Confirm Password|class_name=fullwidth|render={auth_mode=="Register"}|>
+<|{auth_role}|selector|lov={auth_role_lov}|dropdown=True|label=Role|class_name=fullwidth|render={auth_mode=="Register"}|>
+
+<|layout|columns=1 1|gap=8px|
+<|Sign In|button|on_action=on_auth_login|render={auth_mode=="Sign In"}|>
+<|Create Account|button|on_action=on_auth_register|render={auth_mode=="Register"}|>
+<|Switch Mode|button|on_action=on_auth_toggle_mode|class_name=secondary|>
+<|Clear|button|on_action=on_auth_clear|class_name=secondary|>
+|>
+|>
+<|part|render={is_authenticated}|class_name=settings-panel|
+<|{auth_profile_md}|text|mode=md|class_name=audit-stmt|>
+<|{auth_access_md}|text|mode=md|class_name=inline-hint|>
+<|layout|columns=1 1|gap=8px|
+<|Go to Dashboard|button|on_action=on_auth_go_dashboard|>
+<|Sign Out|button|on_action=on_auth_logout|class_name=secondary|>
+|>
+|>
+
+|>
+""
+"""
+
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+DASH = """
+<|part|class_name=pg pg-dashboard|
+
+<|part|class_name=page-hd|
+<|Dashboard|text|class_name=page-title|>
+<|Live pipeline status, recent activity, and upcoming compliance reviews|text|class_name=page-sub|hover_text=Live pipeline status, recent activity, and upcoming compliance reviews|>
+|>
+<|part|class_name=nlp-banner|
+<|Settings|button|on_action=on_store_settings_open|class_name=secondary plain|hover_text=Change store backend|>
+<|Store|text|class_name=banner-label ml-auto|>
+<|{store_status_label}|text|class_name=store-mode-pill|hover_text={store_status_hover}|>
+|>
+<|{store_settings_open}|dialog|title=Store Settings|width=640px|
+<|{store_backend_sel}|selector|lov={store_backend_lov}|label=Backend|class_name=fullwidth|>
+<|part|render={store_backend_sel=="mongo"}|
+<|{store_mongo_uri}|input|label=MongoDB URI|class_name=fullwidth|hover_text=e.g. mongodb://localhost:27017/anon_studio or mongodb+srv://user:pass@cluster/db|>
+|>
+<|part|render={store_backend_sel=="duckdb"}|
+<|{store_duckdb_path}|input|label=DuckDB file path|class_name=fullwidth|hover_text=e.g. /tmp/anon_studio.duckdb for local persistent single-node storage.|>
+|>
+<|part|render={store_settings_msg!=""}|
+<|{store_settings_msg}|text|class_name=inline-hint|>
+|>
+<|layout|columns=1 1|gap=8px|
+<|Apply|button|on_action=on_store_apply|>
+<|Cancel|button|on_action=on_store_settings_close|class_name=secondary|>
+|>
+|>
+"""
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 DASH = """
 <|part|class_name=pg pg-dashboard|
 
-<|part|class_name=page-hd dash-hero|
-<|part|class_name=dash-hero-copy|
-<|Operations Command Center|text|class_name=dash-eyebrow|>
-<|Dashboard|text|class_name=page-title dash-hero-title|>
-<|Live pipeline status, recent activity, and upcoming compliance reviews|text|class_name=page-sub dash-hero-sub|hover_text=Live pipeline status, recent activity, and upcoming compliance reviews|>
-|>
-<|part|class_name=dash-hero-meta|
-<|part|class_name=dash-hero-store|
-<|Data Store|text|class_name=banner-label|>
-<|{store_status_label}|button|on_action=on_store_settings_open|class_name=store-mode-pill plain|hover_text={store_status_hover}|>
-<|Settings|button|on_action=on_store_settings_open|class_name=secondary plain|hover_text=Change store backend|>
-|>
-<|part|class_name=dash-hero-actions|
-<|Refresh|button|on_action=on_refresh_dashboard|class_name=secondary|>
-<|Generate Demo Session|button|on_action=on_dash_seed_demo|>
-|>
-|>
+<|part|class_name=page-hd|
+<|Dashboard|text|class_name=page-title|>
+<|Live pipeline status, recent activity, and upcoming compliance reviews|text|class_name=page-sub|hover_text=Live pipeline status, recent activity, and upcoming compliance reviews|>
 |>
 
-<|part|class_name=dash-toolbar|
-<|part|class_name=dash-toolbar-copy|
-<|Portfolio Lens|text|class_name=dash-toolbar-label|>
-<|Switch between report modes and time windows without leaving the command view.|text|class_name=dash-toolbar-sub|>
+<|part|class_name=nlp-banner|
+<|Settings|button|on_action=on_store_settings_open|class_name=secondary plain|hover_text=Change store backend|>
+<|Store|text|class_name=banner-label ml-auto|>
+<|{store_status_label}|text|class_name=store-mode-pill|hover_text={store_status_hover}|>
 |>
-<|part|class_name=dash-toolbar-cluster|
+""" + _STORE_SETTINGS_DIALOG + """
+<|part|class_name=dash-toolbar|
+<|layout|columns=1 2 2 4 3|gap=8px|
+<|Refresh|button|on_action=on_refresh_dashboard|class_name=secondary|>
+<|Generate Demo Session|button|on_action=on_dash_seed_demo|class_name=secondary|>
 <|{dash_report_mode}|selector|lov={dash_report_mode_lov}|dropdown=True|label=Mode|on_change=on_dash_filters_change|class_name=fullwidth dash-filter|>
 <|{dash_time_window}|selector|lov={dash_time_window_lov}|dropdown=True|label=Window|on_change=on_dash_filters_change|class_name=fullwidth dash-filter dash-window|>
+<|part|
+|>
 |>
 |>
 
@@ -269,60 +129,65 @@ DASH = """
 |>
 |>
 
-<|part|class_name=dash-status-band|
-<|part|class_name=dash-status-stack|
-<|part|class_name=dash-svc-bar|
-<|{dash_svc_health_md}|text|mode=md|class_name=svc-health-row|>
-|>
-<|part|render={dash_alerts_visible}|class_name=dash-alerts-wrap|
-<|Active Alerts|text|class_name=sh sh-top dash-alerts-title|>
-<|{dash_alerts_md}|text|mode=md|class_name=dash-alerts-body|>
-|>
-|>
-<|part|render={dash_has_reviews}|class_name=dash-upcoming dash-upcoming-panel|
-<|Upcoming Reviews|text|class_name=sh sh-top dash-section-title|>
+<|{"*Start by analyzing text, creating pipeline cards, or scheduling reviews — data will appear here.*"}|text|mode=md|render={not (dash_stage_chart_visible or dash_entity_chart_visible or dash_has_reviews)}|class_name=audit-stmt|>
+
+<|part|render={dash_has_reviews}|class_name=dash-upcoming|
+<|Upcoming Reviews|text|class_name=sh dash-section-title|>
 <|{dash_upcoming_md}|text|mode=md|class_name=hi-box dash-upcoming-box|>
 |>
-|>
 
-<|part|render={not (dash_stage_chart_visible or dash_entity_chart_visible or dash_has_reviews)}|class_name=dash-empty-banner|
-<|Portfolio is quiet|text|class_name=dash-empty-title|>
-<|{"*Start by analyzing text, creating pipeline cards, or scheduling reviews and this dashboard will populate automatically.*"}|text|mode=md|class_name=dash-empty-sub|>
-|>
-
-<|part|class_name=dash-lower-section|
-
+<|part|render={dash_stage_chart_visible or dash_entity_chart_visible}|class_name=dash-reports|
+<|Overview Reports|text|class_name=sh dash-section-title|>
 <|layout|columns=1 1|gap=24px|
-<|part|render={dash_stage_chart_visible}|class_name=settings-panel dash-panel dash-panel-info|
+<|part|render={dash_stage_chart_visible}|class_name=settings-panel dash-panel|
 <|Pipeline Health|text|class_name=sh sh-top|>
-<|layout|columns=1 1 1|gap=16px|
+<|layout|columns=1 1 1|gap=10px|
 <|{dash_completion_pct}|metric|title=Completion %|delta={dash_completion_pct_delta}|delta_color=normal|format=%.0f|type=linear|min=0|max=100|>
 <|{dash_inflight_cards}|metric|title=In-Flight Cards|delta={dash_inflight_cards_delta}|delta_color=normal|format=%d|>
 <|{dash_backlog_cards}|metric|title=Backlog|delta={dash_backlog_cards_delta}|delta_color=inversed|format=%d|>
 |>
 <|{dash_completion_pct}|progress|linear=True|>
-<|Pipeline Stage Distribution|text|class_name=sh|>
-<|{dash_stage_chart}|chart|type=plotly|figure={dash_stage_figure}|height=300px|>
 |>
-<|part|render={not dash_stage_chart_visible}|class_name=panel widget-empty dash-panel dash-panel-muted|
-<|Pipeline|text|class_name=sh sh-top|>
-<|No pipeline cards yet.|text|class_name=widget-empty-title|>
-<|Create cards in the Pipeline to begin tracking compliance stages.|text|class_name=widget-empty-sub|>
-|>
-
 <|part|render={dash_entity_chart_visible}|class_name=settings-panel dash-panel entity-mix-panel|
-<|PII Entity Analysis|text|class_name=sh sh-top|>
+<|PII Entity Mix|text|class_name=sh sh-top|>
 <|{dash_entity_report_md}|text|mode=md|class_name=audit-stmt entity-mix-summary|>
-<|layout|columns=1 1|gap=16px|
+<|layout|columns=1 1|gap=12px|
 <|{dash_entity_dominance_pct}|metric|title=Dominant Share %|format=%.1f|type=none|>
 <|{dash_kpi_entities_total}|metric|title=Total Detections|format=%d|type=none|>
 |>
+<|{dash_entity_mix_chart}|chart|type=plotly|figure={dash_entity_mix_figure}|height=280px|>
+|>
+|>
+|>
+
+<|part|
+
+<|part|render={dash_map_visible}|class_name=settings-panel dash-panel geo-map-panel|
+<|Geo Signal Map|text|class_name=sh sh-top|>
+<|{dash_map_md}|text|mode=md|class_name=audit-stmt geo-map-summary|>
+<|{dash_map_chart}|chart|type=plotly|figure={dash_map_figure}|height=360px|>
+|>
+<|part|render={not dash_map_visible}|class_name=panel widget-empty|
+<|Geo Signal Map|text|class_name=sh sh-top|>
+<|No location mentions yet.|text|class_name=widget-empty-title|>
+<|Analyze location-rich text to light up the map.|text|class_name=widget-empty-sub|>
+<|part|class_name=widget-empty-actions|
+<|Generate Demo Session|button|on_action=on_dash_seed_demo|>
+|>
+|>
+
+<|layout|columns=1 1|gap=24px|
+<|part|render={dash_stage_chart_visible}|class_name=panel dash-panel|
+<|Pipeline Stage Distribution|text|class_name=sh|>
+<|{dash_stage_chart}|chart|type=plotly|figure={dash_stage_figure}|height=320px|>
+|>
+<|part|render={dash_entity_chart_visible}|class_name=panel dash-panel|
 <|Top PII Entity Types|text|class_name=sh|>
 <|All sessions|text|class_name=inline-hint|>
-<|{dash_entity_chart}|chart|type=plotly|figure={dash_entity_chart_figure}|height=320px|>
+<|{dash_entity_chart}|chart|type=plotly|figure={dash_entity_chart_figure}|height=400px|>
 |>
-<|part|render={not dash_entity_chart_visible}|class_name=panel widget-empty dash-panel dash-panel-muted|
-<|PII Entity Analysis|text|class_name=sh sh-top|>
+<|part|render={not dash_entity_chart_visible}|class_name=panel widget-empty|
+<|Top PII Entity Types|text|class_name=sh sh-top|>
 <|No saved PII sessions yet.|text|class_name=widget-empty-title|>
 <|Run one demo session to populate this chart instantly.|text|class_name=widget-empty-sub|>
 <|part|class_name=widget-empty-actions|
@@ -332,32 +197,18 @@ DASH = """
 |>
 |>
 
-<|part|render={pipeline_burndown_visible}|class_name=settings-panel dash-panel dash-panel-warning|
+<|part|render={pipeline_burndown_visible}|class_name=settings-panel dash-panel|
 <|Pipeline Burndown|text|class_name=sh sh-top|>
 <|{pipeline_burndown_md}|text|mode=md|class_name=audit-stmt|>
 <|{pipeline_burndown}|chart|type=plotly|figure={pipeline_burndown_figure}|height=300px|>
 |>
-<|part|render={not pipeline_burndown_visible}|class_name=panel widget-empty dash-panel dash-panel-muted|
+<|part|render={not pipeline_burndown_visible}|class_name=panel widget-empty|
 <|Pipeline Burndown|text|class_name=sh sh-top|>
 <|No pipeline cards yet.|text|class_name=widget-empty-title|>
 <|Create cards in the Pipeline to see remaining open work over time.|text|class_name=widget-empty-sub|>
 |>
 
-<|part|render={dash_map_visible}|class_name=settings-panel dash-panel dash-panel-cyan geo-map-panel|
-<|Geo Signal Map|text|class_name=sh sh-top|>
-<|{dash_map_md}|text|mode=md|class_name=audit-stmt geo-map-summary|>
-<|{dash_map_chart}|chart|type=plotly|figure={dash_map_figure}|height=360px|>
-|>
-<|part|render={not dash_map_visible}|class_name=panel widget-empty dash-panel dash-panel-muted|
-<|Geo Signal Map|text|class_name=sh sh-top|>
-<|No location mentions yet.|text|class_name=widget-empty-title|>
-<|Analyze location-rich text to light up the map.|text|class_name=widget-empty-sub|>
-<|part|class_name=widget-empty-actions|
-<|Generate Demo Session|button|on_action=on_dash_seed_demo|>
-|>
-|>
-
-<|part|render={dash_perf_visible}|class_name=settings-panel dash-panel dash-panel-neutral|
+<|part|render={dash_perf_visible}|class_name=settings-panel dash-panel|
 <|Engine Performance|text|class_name=sh sh-top|>
 <|layout|columns=1 1|gap=16px|
 <|{dash_perf_avg_ms}|metric|title=Avg Latency|format=%.0f ms|delta={dash_perf_delta_ms}|delta_color=invert|type=none|>
@@ -365,13 +216,13 @@ DASH = """
 |>
 <|{perf_telemetry_table}|chart|id=dash_perf_bar|type=plotly|figure={dash_perf_figure}|height=260px|>
 |>
-<|part|render={not dash_perf_visible}|class_name=panel widget-empty dash-panel dash-panel-muted|
+<|part|render={not dash_perf_visible}|class_name=panel widget-empty|
 <|Engine Performance|text|class_name=sh sh-top|>
 <|No sessions timed yet.|text|class_name=widget-empty-title|>
 <|Run Analyze Text or submit a batch job to see engine latency metrics.|text|class_name=widget-empty-sub|>
 |>
 
-<|part|render={job_file_art!=""}|class_name=settings-panel dash-panel dash-panel-success|
+<|part|render={job_file_art!=""}|class_name=settings-panel dash-panel|
 <|Last Upload Fingerprint|text|class_name=sh sh-top|>
 <|{job_file_name}|text|class_name=inline-hint|>
 <|{job_file_art}|text|mode=pre|class_name=file-hash-art|>
@@ -392,39 +243,32 @@ JOBS = """
 <|Upload CSV or Excel files for bulk PII anonymization in the background|text|class_name=page-sub|hover_text=Accepted formats: .csv, .xlsx, .xls up to 50 MB. Configure method and threshold, then run and monitor progress here.|>
 |>
 
+<|layout|columns=1 1 10|gap=8px|
+<|Run Job|button|on_action=on_submit_job|>
+<|Refresh|button|on_action=on_poll_progress|class_name=secondary|>
+<|part|>
+|>
+
 <|layout|columns=1 1 1 1|gap=12px|
 <|{job_kpi_total}|metric|title=Total Jobs|format=%d|type=none|>
 <|{job_kpi_running}|metric|title=Running|format=%d|delta_color=normal|type=none|>
-<|{job_kpi_success_pct}|metric|title=Success Rate|format=%.0f%%|type=none|>
+<|{job_kpi_success_pct}|indicator|value={job_kpi_success_pct}|min=0|max=100|title=Success Rate|format=%.0f%%|>
 <|{job_kpi_entities}|metric|title=Entities Found|format=%s|type=none|>
 |>
 
 <|part|class_name=nlp-banner status-ribbon|
 <|NLP|text|class_name=banner-label|>
-<|{spacy_status_label}|button|on_action=on_job_adv_open|class_name=store-mode-pill plain|hover_text={spacy_status_hover}|>
+<|{spacy_ok}|status|>
+<|{spacy_status_label}|text|class_name=store-mode-pill|hover_text={spacy_status_hover}|>
 <|Store|text|class_name=banner-label|>
-<|{store_status_label}|button|on_action=on_store_settings_open|class_name=store-mode-pill plain|hover_text={store_status_hover}|>
-<|Refresh|button|on_action=on_poll_progress|class_name=secondary plain ml-auto|hover_text=Poll active job progress|>
-<|Settings|button|on_action=on_store_settings_open|class_name=secondary plain|hover_text=Change store backend|>
+<|{store_ok}|status|>
+<|{store_status_label}|text|class_name=store-mode-pill|hover_text={store_status_hover}|>
+<|Raw DataNode|text|class_name=banner-label|>
+<|{raw_input_ok}|status|>
+<|{raw_input_status_label}|text|class_name=store-mode-pill|hover_text={raw_input_status_hover}|>
+<|Settings|button|on_action=on_store_settings_open|class_name=secondary plain ml-auto|hover_text=Change store backend|>
 |>
-
-<|{store_settings_open}|dialog|title=Store Settings|width=640px|
-<|{store_backend_sel}|selector|lov={store_backend_lov}|label=Backend|class_name=fullwidth|>
-<|part|render={store_backend_sel=="mongo"}|
-<|{store_mongo_uri}|input|label=MongoDB URI|class_name=fullwidth|hover_text=e.g. mongodb://localhost:27017/anon_studio or mongodb+srv://user:pass@cluster/db|>
-|>
-<|part|render={store_backend_sel=="duckdb"}|
-<|{store_duckdb_path}|input|label=DuckDB file path|class_name=fullwidth|hover_text=e.g. /tmp/anon_studio.duckdb for local persistent single-node storage.|>
-|>
-<|part|render={store_settings_msg!=""}|
-<|{store_settings_msg}|text|class_name=inline-hint|>
-|>
-<|layout|columns=1 1|gap=8px|
-<|Apply|button|on_action=on_store_apply|>
-<|Cancel|button|on_action=on_store_settings_close|class_name=secondary|>
-|>
-|>
-
+""" + _STORE_SETTINGS_DIALOG + """
 <|layout|columns=2 1|gap=24px|
 <|part|
 <|part|class_name=panel|
@@ -482,22 +326,10 @@ JOBS = """
 <|part|class_name=settings-panel|
 <|Active Run Monitor|text|class_name=sh sh-top|>
 <|layout|columns=1 1 1 1|gap=10px|
-<|part|class_name=panel|
-<|Run Health|text|class_name=inline-hint|>
-<|{job_run_health}|text|class_name=sh|>
-|>
-<|part|class_name=panel|
-<|Active Job|text|class_name=inline-hint|>
-<|{active_job_id if active_job_id else "No job"}|text|class_name=sh|>
-|>
-<|part|class_name=panel|
-<|Active Submission|text|class_name=inline-hint|>
-<|{job_active_submission_id if job_active_submission_id else "—"}|text|class_name=sh|>
-|>
-<|part|class_name=panel|
-<|Submission Status|text|class_name=inline-hint|>
-<|{job_submission_status}|text|class_name=sh|>
-|>
+<|{job_run_health}|metric|title=Run Health|format=%s|type=none|>
+<|{active_job_id if active_job_id else "No job"}|metric|title=Active Job|format=%s|type=none|>
+<|{job_active_submission_id if job_active_submission_id else "—"}|metric|title=Active Submission|format=%s|type=none|>
+<|{job_submission_status}|metric|title=Submission Status|format=%s|type=none|>
 |>
 <|part|render={job_run_health!="Idle"}|
 <|{job_stage_text}|text|class_name=audit-stmt|>
@@ -521,11 +353,24 @@ JOBS = """
 <|Download CSV|button|on_action=on_download|render={download_ready}|>
 <|part|render={download_ready}|
 <|layout|columns=1 1|gap=16px|
-<|{stats_entity_rows}|table|columns=Entity Type;Count|page_size=8|show_all=False|filter=True|sortable=True|>
+<|{stats_entity_rows}|table|columns=Entity Type;Count|page_size=8|show_all=False|>
 <|{stats_entity_rows}|chart|type=plotly|figure={stats_entity_chart_figure}|height=260px|>
 |>
+<|part|render={job_before_after_visible}|
+<|Before / After Sample|text|class_name=sh|>
+<|layout|columns=1 1|gap=16px|
+<|part|class_name=settings-panel|
+<|Before (original)|text|class_name=sh sh-top|>
+<|{job_before_sample_data}|table|page_size=3|show_all=False|>
+|>
+<|part|class_name=settings-panel|
+<|After (anonymized)|text|class_name=sh sh-top|>
+<|{job_after_sample_data}|table|page_size=3|show_all=False|>
+|>
+|>
+|>
 <|Preview (first 50 rows)|text|class_name=sh|>
-<|{preview_data}|table|page_size=8|show_all=False|filter=True|sortable=True|>
+<|{preview_data}|table|page_size=8|show_all=False|>
 |>
 <|part|render={not download_ready}|
 <|Run a job to generate anonymized output and quality metrics.|text|class_name=inline-hint|>
@@ -540,7 +385,7 @@ JOBS = """
 <|part|>
 |>
 <|Select a row first. Cancel works for pending/running jobs; remove works for finished jobs.|text|class_name=inline-hint|>
-<|{job_table_data}|table|columns=Job ID;Title;Progress;Status;Entities;Duration;Message|cell_class_name[Status]=status_cell_class|page_size=10|show_all=False|on_action=on_select_job|filter=True|sortable=True|>
+<|{job_table_data}|table|columns=Job ID;Title;Progress;Status;Entities;Duration;Message|cell_class_name[Status]=status_cell_class|page_size=10|show_all=False|on_action=on_select_job|>
 |>
 
 <|part|render={job_view_tab=="Data Nodes"}|class_name=panel|
@@ -555,14 +400,11 @@ JOBS = """
 |>
 |>
 
-<|part|render={job_view_tab=="Errors"}|class_name=panel|
+<|part|render={job_view_tab=="Errors / Audit"}|class_name=panel|
 <|Errors & Audit|text|class_name=sh sh-top|>
-<|{job_errors_data}|table|columns=Time;Source;Details;Severity|cell_class_name[Severity]=severity_cell_class|page_size=10|show_all=False|filter=True|sortable=True|>
+<|{job_errors_data}|table|columns=Time;Source;Details;Severity|cell_class_name[Severity]=severity_cell_class|page_size=10|show_all=False|>
 <|Go to Audit Log for full event history and filtering.|text|class_name=inline-hint|>
-|>
-
-<|part|render={job_view_tab=="Orchestration"}|class_name=panel|
-<|Task Orchestration Interface|text|class_name=sh sh-top|>
+<|Task Orchestration Interface|text|class_name=sh|>
 <|{orchestration_scenario}|scenario_selector|>
 <|part|render={orchestration_scenario is not None}|
 <|{orchestration_scenario}|scenario|on_submission_change=on_submission_status_change|>
@@ -574,17 +416,18 @@ JOBS = """
 <|{whatif_scenarios_sel}|selector|lov={whatif_scenarios_lov}|multiple=True|dropdown=True|filter=True|label=Scenarios to compare|>
 <|Compare Scenarios|button|on_action=on_whatif_compare|class_name=secondary|>
 <|{whatif_compare_md}|text|mode=md|class_name=inline-hint|>
+<|{comparator_scenarios}|scenario_comparator|>
 <|part|render={whatif_compare_has_data}|
 <|layout|columns=1 1|gap=16px|
-<|{whatif_compare_data}|table|columns=Scenario;Processed Rows;Entities;Entities / Row|show_all=False|page_size=6|filter=True|sortable=True|>
+<|{whatif_compare_data}|table|columns=Scenario;Processed Rows;Entities;Entities / Row|show_all=False|page_size=6|>
 <|{whatif_compare_chart}|chart|type=plotly|figure={whatif_compare_figure}|height=240px|>
 |>
 |>
 
 <|Submission Monitor|text|class_name=sh|>
-<|{submission_table}|table|columns=Submission;Entity;Status;Jobs;Created|cell_class_name[Status]=status_cell_class|show_all=False|page_size=8|filter=True|sortable=True|>
+<|{submission_table}|table|columns=Submission;Entity;Status;Jobs;Created|cell_class_name[Status]=status_cell_class|show_all=False|page_size=8|>
 <|Cycle Monitor|text|class_name=sh|>
-<|{cycle_table}|table|columns=Cycle;Frequency;Start;End;Scenarios|show_all=False|page_size=8|filter=True|sortable=True|>
+<|{cycle_table}|table|columns=Cycle;Frequency;Start;End;Scenarios|show_all=False|page_size=8|>
 |>
 
 |>
@@ -629,27 +472,27 @@ PIPELINE = """
 <|layout|columns=1 1 1 1|gap=14px|
 <|part|class_name=kc kc-gray|
 <|part|class_name=kh kh-gray|
-Backlog <|{kanban_backlog_len}|text|class_name=kh-cnt|>
+Intake <|{kanban_backlog_len}|text|class_name=kh-cnt|>
 |>
-<|{kanban_backlog}|table|selected={backlog_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|filter=True|sortable=True|>
+<|{kanban_backlog}|table|selected={backlog_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|>
 |>
 <|part|class_name=kc kc-purple|
 <|part|class_name=kh kh-purple|
 In Progress <|{kanban_in_progress_len}|text|class_name=kh-cnt|>
 |>
-<|{kanban_in_progress}|table|selected={in_progress_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|filter=True|sortable=True|>
+<|{kanban_in_progress}|table|selected={in_progress_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|>
 |>
 <|part|class_name=kc kc-yellow|
 <|part|class_name=kh kh-yellow|
 Review <|{kanban_review_len}|text|class_name=kh-cnt|>
 |>
-<|{kanban_review}|table|selected={review_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|filter=True|sortable=True|>
+<|{kanban_review}|table|selected={review_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|>
 |>
 <|part|class_name=kc kc-green|
 <|part|class_name=kh kh-green|
 Done <|{kanban_done_len}|text|class_name=kh-cnt|>
 |>
-<|{kanban_done}|table|selected={done_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|filter=True|sortable=True|>
+<|{kanban_done}|table|selected={done_sel}|columns=Select;Title;Priority;Job|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|use_checkbox=True|show_all=True|on_action=on_card_pick|>
 |>
 |>
 |>
@@ -672,6 +515,10 @@ Done <|{kanban_done_len}|text|class_name=kh-cnt|>
 <|{card_status_f}|selector|lov={card_status_opts}|dropdown=True|label=Status|>
 <|{card_priority_f}|selector|lov={card_priority_opts}|dropdown=True|label=Priority|>
 |>
+<|layout|columns=1 1|gap=12px|
+<|{card_type_f}|selector|lov={card_type_opts}|dropdown=True|label=Type|>
+<|{card_source_f}|input|label=Data Source|>
+|>
 <|{card_assign_f}|input|label=Assignee|class_name=fullwidth|>
 <|{card_labels_f}|input|label=Labels (comma-separated)|class_name=fullwidth|>
 <|{card_session_f}|selector|lov={card_session_opts}|dropdown=True|label=Link Session|class_name=fullwidth|>
@@ -692,14 +539,24 @@ Done <|{kanban_done_len}|text|class_name=kh-cnt|>
 |>
 |>
 
-<|{card_audit_open}|dialog|title=Card Audit History|on_action=on_card_history_close|width=700px|
-<|{card_audit_data}|table|columns=Time;Action;Actor;Details|show_all=False|page_size=12|filter=True|sortable=True|>
+<|{card_audit_open}|dialog|title=Card History|on_action=on_card_history_close|width=760px|
+<|Sessions|text|class_name=sh|>
+<|{card_sessions_data}|table|columns=ID;Title;Operator;Entities;Source;Created|show_all=False|page_size=6|>
+<|Audit Trail|text|class_name=sh|>
+<|{card_audit_data}|table|columns=Time;Action;Actor;Details|show_all=False|page_size=8|>
 <|Close|button|on_action=on_card_history_close|class_name=secondary|>
 |>
 
 <|All Cards|text|class_name=sh|>
 <|part|class_name=panel|
-<|{pipeline_all}|table|selected={pipeline_all_sel}|columns=Title;Priority;Assignee;Job;Labels;Attested;Updated|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|show_all=False|page_size=10|on_action=on_card_pick|filter=True|sortable=True|>
+<|{pipeline_all}|table|selected={pipeline_all_sel}|columns=Title;Priority;Assignee;Job;Labels;Attested;Updated|cell_class_name[Priority]=priority_cell_class|cell_class_name[Job]=status_cell_class|show_all=False|page_size=10|on_action=on_card_pick|>
+|>
+
+<|Export Pipeline Data|text|class_name=sh|>
+<|layout|columns=1 1 6|gap=12px|
+<|Export All CSV|button|on_action=on_pipeline_export_csv|class_name=secondary|>
+<|Export All JSON|button|on_action=on_pipeline_export_json|class_name=secondary|>
+<|part|>|>
 |>
 
 |>
@@ -729,11 +586,11 @@ SCHEDULE = """
 <|layout|columns=2 1|gap=24px|
 <|part|class_name=panel|
 <|All Appointments|text|class_name=panel-hd|>
-<|{appt_table}|table|columns=Title;Date / Time;Duration;Attendees;Linked Card;Status|style[Status]=status_cell_class|show_all=False|page_size=10|on_action=on_appt_select|filter=True|sortable=True|>
+<|{appt_table}|table|columns=Title;Date / Time;Duration;Attendees;Linked Card;Status|cell_class_name[Status]=status_cell_class|show_all=False|page_size=10|on_action=on_appt_select|>
 |>
 <|part|class_name=panel|
 <|Upcoming|text|class_name=panel-hd|>
-<|{upcoming_table}|table|columns=Title;Date;Time|show_all=False|page_size=6|filter=True|sortable=True|>
+<|{upcoming_table}|table|columns=Title;Date;Time|show_all=False|page_size=6|>
 |>
 |>
 
@@ -787,16 +644,21 @@ AUDIT = """
 |>
 
 <|Filter|text|class_name=sh sh-top|>
-<|layout|columns=3 1 1 1 1 1|gap=12px|
+<|layout|columns=3 1 1 1|gap=12px|
 <|{audit_search}|input|label=Search action / details|class_name=fullwidth|>
 <|{audit_sev}|selector|lov={audit_sev_opts}|dropdown=True|label=Severity|>
 <|Apply|button|on_action=on_audit_filter|>
 <|Clear|button|on_action=on_audit_clear|class_name=secondary|>
-<|Export CSV|button|on_action=on_export_audit_csv|class_name=secondary|>
-<|Export JSON|button|on_action=on_export_audit_json|class_name=secondary|>
 |>
 
-<|{audit_table}|table|columns=Time;Actor;Action;Resource;Details;Severity|cell_class_name[Severity]=severity_cell_class|show_all=False|page_size=20|filter=True|sortable=True|>
+<|{audit_table}|table|columns=Time;Actor;Action;Resource;Details;Severity|cell_class_name[Severity]=severity_cell_class|show_all=False|page_size=20|>
+
+<|Export|text|class_name=sh|>
+<|layout|columns=1 1 6|gap=12px|
+<|Export CSV|button|on_action=on_audit_export_csv|class_name=secondary|>
+<|Export JSON|button|on_action=on_audit_export_json|class_name=secondary|>
+<|part|>|>
+|>
 
 |>
 """
@@ -810,21 +672,20 @@ QT = """
 <|Paste or type any text to detect and redact personally identifiable information|text|class_name=page-sub|>
 |>
 
-<|part|class_name=nlp-banner status-ribbon|
-<|NLP|text|class_name=banner-label|>
-<|{spacy_status_label}|button|on_action=on_qt_settings_open|class_name=store-mode-pill plain|hover_text={spacy_status_hover}|>
+<|part|class_name=nlp-banner|
+NLP Engine: <|{spacy_status}|text|>
 |>
 
 <|part|class_name=panel|
 <|1. Input and Run|text|class_name=sh sh-top|>
 <|{qt_input}|input|multiline=True|lines_shown=10|label=Input text|class_name=fullwidth|>
+<|{qt_entities}|selector|lov={qt_all_entities}|multiple=True|dropdown=True|filter=True|label=Entity types to detect|class_name=fullwidth|hover_text=Select which PII entity types to look for. Default: all 17 types selected. Narrowing scope improves speed and reduces false positives.|>
 
 <|part|class_name=qt-actions|
 <|Detect PII|button|on_action=on_qt_analyze|>
 <|Anonymize|button|on_action=on_qt_anonymize|>
 <|Settings|button|on_action=on_qt_settings_open|class_name=secondary|>
 <|Load Sample|button|on_action=on_qt_load_sample|class_name=secondary|>
-<|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
 <|Clear|button|on_action=on_qt_clear|class_name=secondary|>
 |>
 
@@ -876,13 +737,18 @@ QT = """
 
 <|part|class_name=panel entity-evidence-panel|
 <|3. Entity Evidence|text|class_name=sh sh-top|>
-<|{qt_entity_rows}|table|columns=Entity Type;Text;Confidence;Confidence Band;Span;Recognizer|show_all=False|page_size=8|filter=True|sortable=True|>
+<|{qt_entity_rows}|table|columns={qt_entity_columns}|show_all=False|page_size=8|filter=True|sortable=True|>
 <|{qt_entity_chart}|chart|type=plotly|figure={qt_entity_figure}|height=300px|render={qt_entity_chart_visible}|>
 |>
 
 <|Saved Sessions|text|class_name=sh|>
 <|part|class_name=panel|
-<|{qt_sessions_data}|table|columns=ID;Title;Operator;Entities;Created|show_all=False|page_size=6|filter=True|sortable=True|>
+<|layout|columns=5 1|gap=8px|
+<|{qt_card_f}|selector|lov={qt_card_opts}|dropdown=True|label=Attach to card (optional)|class_name=fullwidth|hover_text=Link this session to a pipeline card for traceability and auditing.|>
+<|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
+|>
+<|{qt_sessions_data}|table|columns=ID;Title;Operator;Entities;Created|show_all=False|page_size=6|filter=True|sortable=True|on_action=on_qt_session_select|>
+<|Load Session|button|on_action=on_qt_load_session|class_name=secondary|render={qt_selected_session!=""}|>
 |>
 
 <|{qt_settings_open}|dialog|title=Detection Settings|on_action=on_qt_settings_close|width=720px|
@@ -900,6 +766,10 @@ QT = """
 <|{qt_entities}|selector|lov={qt_all_entities}|multiple=True|dropdown=True|filter=True|label=Entity types to detect|class_name=fullwidth|>
 <|{qt_allowlist_text}|input|label=Allowlist — words to never flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "John, Acme Corp" — these exact words will be excluded from PII detection even if the model flags them.|>
 <|{qt_denylist_text}|input|label=Denylist — words to always flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "MyCompany, ProjectX" — these words will always be treated as PII regardless of model confidence.|>
+<|layout|columns=auto 1|gap=8px|
+<|{qt_show_rationale}|toggle|label=Show detection rationale|on_change=on_qt_show_rationale_change|hover_text=When enabled, the Entity Evidence table shows the Recognizer and Rationale columns explaining why each span was flagged as PII.|>
+<|part|>
+|>
 <|part|render={qt_operator=="synthesize"}|
 <|Synthetic Output (LLM/Faker)|text|class_name=sh sh-top|>
 <|{qt_synth_provider}|selector|lov={qt_synth_provider_lov}|dropdown=True|label=Synthetic provider|class_name=fullwidth|hover_text=faker uses local deterministic synthesis; openai/azure_openai call an LLM and fall back to faker on failure.|>
@@ -941,31 +811,24 @@ UI_DEMO = """
 
 <|part|class_name=panel|
 <|Playground Controls|text|class_name=sh sh-top|>
-<|layout|columns=1 1 1 1|gap=10px|
+<|layout|columns=1 1 1 1 1 1 1|gap=10px|
 <|{ui_plot_type}|selector|lov={ui_plot_type_lov}|dropdown=True|label=Type|on_change=on_ui_demo_filters_change|>
+<|{ui_plot_orientation}|selector|lov={ui_plot_orientation_lov}|dropdown=True|label=Orientation|render={ui_plot_show_orientation}|on_change=on_ui_demo_filters_change|>
+<|{ui_plot_barmode}|selector|lov={ui_plot_barmode_lov}|dropdown=True|label=Bar Mode|render={ui_plot_show_barmode}|on_change=on_ui_demo_filters_change|>
+<|{ui_plot_trace_mode}|selector|lov={ui_plot_trace_mode_lov}|dropdown=True|label=Trace Mode|render={ui_plot_show_trace_mode}|on_change=on_ui_demo_filters_change|>
 <|{ui_plot_palette}|selector|lov={ui_plot_palette_lov}|dropdown=True|label=Palette|on_change=on_ui_demo_filters_change|>
 <|{ui_plot_theme}|selector|lov={ui_plot_theme_lov}|dropdown=True|label=Theme|on_change=on_ui_demo_filters_change|>
 <|{ui_plot_show_legend}|selector|lov={ui_plot_show_legend_lov}|dropdown=True|label=Legend|on_change=on_ui_demo_filters_change|>
 |>
-<|part|render={ui_plot_show_orientation or ui_plot_show_barmode or ui_plot_show_trace_mode}|
-<|layout|columns=1 1 1 1|gap=10px|
-<|part|render={ui_plot_show_orientation}|
-<|{ui_plot_orientation}|selector|lov={ui_plot_orientation_lov}|dropdown=True|label=Orientation|on_change=on_ui_demo_filters_change|>
-|>
-<|part|render={ui_plot_show_barmode}|
-<|{ui_plot_barmode}|selector|lov={ui_plot_barmode_lov}|dropdown=True|label=Bar Mode|on_change=on_ui_demo_filters_change|>
-|>
-<|part|render={ui_plot_show_trace_mode}|
-<|{ui_plot_trace_mode}|selector|lov={ui_plot_trace_mode_lov}|dropdown=True|label=Trace Mode|on_change=on_ui_demo_filters_change|>
-|>
+<|layout|columns=1 1 6|gap=10px|
+<|{ui_demo_mode}|selector|lov={ui_demo_mode_lov}|dropdown=True|label=Catalog Mode|hover_text=Filter which catalog charts render: All, Entities only, Confidence only, or Operations only.|on_change=on_ui_demo_filters_change|>
+<|{ui_demo_top_n}|number|label=Top N|min=3|max=25|hover_text=Number of top entity types shown in catalog charts.|action_on_blur=True|on_change=on_ui_demo_filters_change|>
 <|part|>
 |>
-|>
-<|layout|columns=1 1 1 1|gap=10px|
-<|{ui_demo_mode}|selector|lov={ui_demo_mode_lov}|dropdown=True|label=Catalog Mode|hover_text=Filter which catalog charts render: All, Entities only, Confidence only, or Operations only.|on_change=on_ui_demo_filters_change|>
-<|{ui_demo_top_n}|number|label=Top N (catalog)|min=3|max=25|hover_text=Number of top entity types shown in catalog charts.|action_on_blur=True|on_change=on_ui_demo_filters_change|>
+<|layout|columns=1 1 1 7|gap=10px|
 <|Refresh|button|on_action=on_ui_demo_refresh|>
 <|Generate Demo Session|button|on_action=on_dash_seed_demo|class_name=secondary|>
+<|part|>
 |>
 <|{ui_demo_summary_md}|text|mode=md|class_name=inline-hint|>
 <|{ui_demo_last_refresh}|text|class_name=inline-hint|render={ui_demo_last_refresh!="—"}|>
@@ -974,7 +837,7 @@ UI_DEMO = """
 <|part|class_name=panel|
 <|1. Chart Playground|text|class_name=sh sh-top|>
 <|{ui_plot_option_rows}|chart|type=plotly|figure={ui_plot_playground_figure}|height=420px|>
-<|{ui_plot_option_rows}|table|columns=Option;Value;Description|show_all=False|page_size=8|filter=True|sortable=True|>
+<|{ui_plot_option_rows}|table|columns=Option;Value;Description|show_all=False|page_size=8|>
 |>
 
 <|part|class_name=panel|
@@ -1021,94 +884,12 @@ UI_DEMO = """
 <|part|class_name=panel|
 <|4. Underlying Tables|text|class_name=sh sh-top|>
 <|layout|columns=1 1 1|gap=12px|
-<|{ui_demo_entity_table}|table|columns=Entity Type;Count;Share %;Cumulative %|show_all=False|page_size=8|filter=True|sortable=True|>
-<|{ui_demo_evidence_table}|table|columns=Entity Type;Confidence;Recognizer;Text|show_all=False|page_size=8|filter=True|sortable=True|>
-<|{ui_demo_pipeline_table}|table|columns=Stage;Count|show_all=False|page_size=8|filter=True|sortable=True|>
+<|{ui_demo_entity_table}|table|columns=Entity Type;Count;Share %;Cumulative %|show_all=False|page_size=8|>
+<|{ui_demo_evidence_table}|table|columns=Entity Type;Confidence;Recognizer;Text|show_all=False|page_size=8|>
+<|{ui_demo_pipeline_table}|table|columns=Stage;Count|show_all=False|page_size=8|>
 |>
 |>
 
-|>
-"""
-
-TELEMETRY = """
-<|part|class_name=panel|
-<|## Telemetry|text|mode=md|>
-<|Pipeline observability — job lifecycle events, throughput metrics, and Prometheus integration status.|text|class_name=inline-hint|>
-|>
-
-<|part|class_name=panel|
-<|**Prometheus:** {telemetry_prometheus_status}|text|mode=md|>
-|>
-
-<|part|class_name=panel|
-<|### KPIs|text|class_name=sh sh-top|>
-<|layout|columns=1 1 1 1 1 1|gap=12px|
-<|part|
-<|Jobs Created|text|class_name=inline-hint|>
-<|{telemetry_kpi_jobs_created}|text|class_name=metric-value|>
-|>
-<|part|
-<|Completed|text|class_name=inline-hint|>
-<|{telemetry_kpi_completed}|text|class_name=metric-value|>
-|>
-<|part|
-<|Failed|text|class_name=inline-hint|>
-<|{telemetry_kpi_failed}|text|class_name=metric-value|>
-|>
-<|part|
-<|Entities Found|text|class_name=inline-hint|>
-<|{telemetry_kpi_entities}|text|class_name=metric-value|>
-|>
-<|part|
-<|Rows Processed|text|class_name=inline-hint|>
-<|{telemetry_kpi_rows}|text|class_name=metric-value|>
-|>
-<|part|
-<|Scenarios|text|class_name=inline-hint|>
-<|{telemetry_kpi_scenarios}|text|class_name=metric-value|>
-|>
-|>
-|>
-
-<|part|class_name=panel|
-<|### Duration Stats|text|class_name=sh sh-top|>
-<|layout|columns=1 1 1|gap=12px|
-<|part|
-<|Avg Duration (s)|text|class_name=inline-hint|>
-<|{telemetry_duration_avg}|text|class_name=metric-value|>
-|>
-<|part|
-<|P95 Duration (s)|text|class_name=inline-hint|>
-<|{telemetry_duration_p95}|text|class_name=metric-value|>
-|>
-<|part|
-<|Samples|text|class_name=inline-hint|>
-<|{telemetry_duration_count}|text|class_name=metric-value|>
-|>
-|>
-|>
-
-<|layout|columns=1 1|gap=16px|
-<|part|class_name=panel|
-<|### Job Lifecycle|text|class_name=sh sh-top|>
-<|{telemetry_lifecycle_figure}|chart|figure={telemetry_lifecycle_figure}|>
-|>
-<|part|class_name=panel|
-<|### Data Throughput|text|class_name=sh sh-top|>
-<|{telemetry_data_figure}|chart|figure={telemetry_data_figure}|>
-|>
-|>
-
-<|part|class_name=panel|
-<|### Recent Events|text|class_name=sh sh-top|>
-<|{telemetry_event_table}|table|columns=timestamp;event_type;actor;resource_type;resource_id;message|show_all=False|page_size=15|filter=True|sortable=True|>
-|>
-
-<|layout|columns=1 1 1 1|gap=12px|
-<|Refresh|button|on_action=on_refresh_telemetry|class_name=button-primary|>
-<|Export CSV|button|on_action=on_export_telemetry_csv|>
-<|Last refreshed: {telemetry_last_refresh}|text|class_name=inline-hint|>
-<||text|>
 |>
 """
 
@@ -1119,12 +900,12 @@ NAV = """
 
 PAGES = {
     "/":          NAV,
+    "auth":       AUTH,
     "dashboard":  DASH,
     "analyze":    QT,
     "jobs":       JOBS,
     "pipeline":   PIPELINE,
     "schedule":   SCHEDULE,
     "audit":      AUDIT,
-    "telemetry":  TELEMETRY,
     "ui_demo":    UI_DEMO,
 }

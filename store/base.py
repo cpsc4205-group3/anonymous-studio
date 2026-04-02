@@ -24,7 +24,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from store.models import PIISession, PipelineCard, Appointment, AuditEntry
+from store.models import PIISession, PipelineCard, Appointment, AuditEntry, UserAccount
 
 
 class StoreBase(ABC):
@@ -43,6 +43,38 @@ class StoreBase(ABC):
     @abstractmethod
     def list_sessions(self) -> List[PIISession]:
         """All sessions, newest first."""
+
+    @abstractmethod
+    def list_sessions_by_card(self, card_id: str) -> List[PIISession]:
+        """All sessions linked to a specific pipeline card, newest first."""
+
+    @abstractmethod
+    def update_session(self, session_id: str, **kwargs) -> Optional[PIISession]:
+        """Update fields on an existing session.
+
+        Returns the updated session or None if session_id not found.
+        Emits a ``session.update`` audit entry on success.
+        """
+
+    @abstractmethod
+    def create_user(self, user: UserAccount) -> UserAccount:
+        """Persist a new user account."""
+
+    @abstractmethod
+    def get_user(self, user_id: str) -> Optional[UserAccount]:
+        """Return the user account or None."""
+
+    @abstractmethod
+    def get_user_by_email(self, email: str) -> Optional[UserAccount]:
+        """Return the user account for the given email or None."""
+
+    @abstractmethod
+    def update_user(self, user_id: str, **kwargs) -> Optional[UserAccount]:
+        """Update fields on an existing user account."""
+
+    @abstractmethod
+    def list_users(self) -> List[UserAccount]:
+        """Return all user accounts."""
 
     # ── Pipeline Cards ─────────────────────────────────────────────────────────
 
