@@ -37,7 +37,27 @@ from typing import Optional
 from store.base import StoreBase
 from store.models import (
     _now, _uid,
-    PIISession, PipelineCard, Appointment, AuditEntry,
+    PIISession, PipelineCard, Appointment, AuditEntry, UserAccount,
+)
+# Import utilities for re-export
+from store.utils import (
+    filter_audit_entries,
+    filter_appointments_by_status,
+    filter_appointments_by_time_range,
+    get_scheduled_appointments,
+    filter_cards_by_priority,
+    filter_cards_by_status,
+    filter_cards_attested,
+    filter_sessions_by_time_window,
+    filter_sessions_by_entities,
+    count_by_severity,
+    count_by_priority,
+    count_sessions_by_operator,
+    is_in_time_window,
+    parse_time_window,
+    filter_by_predicate,
+    group_by,
+    count_by,
 )
 
 __all__ = [
@@ -51,8 +71,27 @@ __all__ = [
     "StoreBase",
     # Models
     "PIISession", "PipelineCard", "Appointment", "AuditEntry",
+    "UserAccount",
     # Helpers (imported by app.py)
     "_now", "_uid",
+    # Data access utilities (imported from store.utils)
+    "filter_audit_entries",
+    "filter_appointments_by_status",
+    "filter_appointments_by_time_range",
+    "get_scheduled_appointments",
+    "filter_cards_by_priority",
+    "filter_cards_by_status",
+    "filter_cards_attested",
+    "filter_sessions_by_time_window",
+    "filter_sessions_by_entities",
+    "count_by_severity",
+    "count_by_priority",
+    "count_sessions_by_operator",
+    "is_in_time_window",
+    "parse_time_window",
+    "filter_by_predicate",
+    "group_by",
+    "count_by",
 ]
 
 def _resolve_store_backend() -> str:

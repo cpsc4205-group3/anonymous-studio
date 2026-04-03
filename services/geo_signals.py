@@ -65,6 +65,7 @@ def build_geo_place_counts(
         if text_token:
             for city, pattern in city_patterns.items():
                 hits = len(pattern.findall(text_token))
+
                 if hits > 0:
                     place_counts[city] = place_counts.get(city, 0) + hits
 

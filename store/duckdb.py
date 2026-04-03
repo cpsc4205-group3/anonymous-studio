@@ -15,7 +15,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from store.base import StoreBase
-from store.models import PIISession, PipelineCard, Appointment, AuditEntry, _now
+from store.models import PIISession, PipelineCard, Appointment, AuditEntry, UserAccount, _now
 
 
 _VALID_CARD_STATUSES = frozenset({"backlog", "in_progress", "review", "done"})
@@ -30,6 +30,7 @@ _SORT_COLUMN: Dict[str, str] = {
     "pipeline_cards": "updated_at",
     "appointments":   "scheduled_for",
     "audit_log":      "timestamp",
+    "users":          "created_at",
 }
 
 
@@ -110,6 +111,15 @@ class DuckDBStore(StoreBase):
                 );
                 """
             )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                  id VARCHAR PRIMARY KEY,
+                  created_at VARCHAR,
+                  payload TEXT NOT NULL
+                );
+                """
+            )
 
     def _has_any_data(self) -> bool:
         with self._lock:
@@ -120,6 +130,7 @@ class DuckDBStore(StoreBase):
                   + (SELECT COUNT(*) FROM pipeline_cards)
                   + (SELECT COUNT(*) FROM appointments)
                   + (SELECT COUNT(*) FROM audit_log)
+                  + (SELECT COUNT(*) FROM users)
                 """
             ).fetchone()
         return bool(row and int(row[0]) > 0)
@@ -134,6 +145,7 @@ class DuckDBStore(StoreBase):
                 f"INSERT INTO {table} (id, {sort_col}, payload) VALUES (?, ?, ?)",
                 [rid, sort_value, payload],
             )
+
 
     def _get_payload(self, table: str, rid: str) -> Optional[str]:
         if table not in _SORT_COLUMN:
@@ -197,6 +209,63 @@ class DuckDBStore(StoreBase):
         payloads = self._list_payloads("pii_sessions", "created_at", desc=True)
         return [_from_payload(PIISession, p) for p in payloads]
 
+    def list_sessions_by_card(self, card_id: str) -> List[PIISession]:
+        rows = self._conn.execute(
+            "SELECT payload FROM pii_sessions "
+            "WHERE json_extract_string(payload::JSON, '$.pipeline_card_id') = ? "
+            "ORDER BY created_at DESC",
+            [card_id],
+        ).fetchall()
+        return [_from_payload(PIISession, str(r[0])) for r in rows]
+
+    def update_session(self, session_id: str, **kwargs) -> Optional[PIISession]:
+        session = self.get_session(session_id)
+        if not session:
+            return None
+        for k, v in kwargs.items():
+            if hasattr(session, k):
+                setattr(session, k, v)
+        self._upsert("pii_sessions", session.id, session.created_at, _to_payload(session))
+        self._log(
+            "system", "session.update", "session", session_id,
+            f"Updated session: {', '.join(kwargs.keys())}",
+        )
+        return session
+
+    def create_user(self, user: UserAccount) -> UserAccount:
+        self._upsert("users", user.id, user.created_at, _to_payload(user))
+        self._log("system", "auth.register", "user", user.id, f"Registered {user.email}")
+        return user
+
+    def get_user(self, user_id: str) -> Optional[UserAccount]:
+        payload = self._get_payload("users", user_id)
+        return _from_payload(UserAccount, payload) if payload else None
+
+    def get_user_by_email(self, email: str) -> Optional[UserAccount]:
+        rows = self._conn.execute(
+            "SELECT payload FROM users "
+            "WHERE lower(json_extract_string(payload::JSON, '$.email')) = ? "
+            "LIMIT 1",
+            [str(email or "").strip().lower()],
+        ).fetchall()
+        return _from_payload(UserAccount, str(rows[0][0])) if rows else None
+
+    def update_user(self, user_id: str, **kwargs) -> Optional[UserAccount]:
+        user = self.get_user(user_id)
+        if not user:
+            return None
+        for k, v in kwargs.items():
+            if hasattr(user, k):
+                setattr(user, k, v)
+        user.updated_at = _now()
+        self._upsert("users", user.id, user.created_at, _to_payload(user))
+        self._log("system", "auth.user_update", "user", user_id, f"Updated user: {', '.join(kwargs.keys())}")
+        return user
+
+    def list_users(self) -> List[UserAccount]:
+        payloads = self._list_payloads("users", "created_at", desc=False)
+        return [_from_payload(UserAccount, p) for p in payloads]
+
     # ── Pipeline cards ────────────────────────────────────────────────────────
 
     def add_card(self, card: PipelineCard) -> PipelineCard:
@@ -219,10 +288,17 @@ class DuckDBStore(StoreBase):
         if not card:
             return None
         old_status = card.status
+        now_ts = _now()
+        if "status" in kwargs:
+            new_status = kwargs.get("status")
+            if new_status == "done" and old_status != "done":
+                kwargs["done_at"] = kwargs.get("done_at") or now_ts
+            elif old_status == "done" and new_status != "done":
+                kwargs["done_at"] = None
         for k, v in kwargs.items():
             if hasattr(card, k):
                 setattr(card, k, v)
-        card.updated_at = _now()
+        card.updated_at = now_ts
         self._upsert("pipeline_cards", card.id, card.updated_at, _to_payload(card))
 
         if "status" in kwargs and kwargs.get("status") != old_status:
@@ -391,3 +467,5 @@ class DuckDBStore(StoreBase):
             if entry.severity not in _VALID_SEVERITIES:
                 entry.severity = "info"
             self._upsert("audit_log", entry.id, entry.timestamp, _to_payload(entry))
+        for user in seed_store.list_users():
+            self._upsert("users", user.id, user.created_at, _to_payload(user))
