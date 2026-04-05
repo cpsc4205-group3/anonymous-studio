@@ -19,6 +19,12 @@ import os, re, time, warnings, tempfile, mimetypes
 
 from threading import Thread
 from services.notifications import send_email_notification
+from services.audit_log import create_log
+
+from pymongo import MongoClient
+
+client = MongoClient("mongodb://localhost:27017/")
+db = client["anonymous_studio"]
 
 _log = logging.getLogger(__name__)
 from collections import Counter
@@ -6771,3 +6777,4 @@ authz_results = [
     "Guest trying read: " + demo_authz("guest", "read"),
     "Guest trying delete: " + demo_authz("guest", "delete"),
 ]
+
