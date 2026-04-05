@@ -4976,6 +4976,35 @@ def on_qt_session_select(state, var_name, value):
         state.qt_selected_session = sid
 
 
+def on_qt_download_session(state):
+    """Download anonymized text + entity CSV for a saved session without loading it."""
+    sid = state.qt_selected_session
+    if not sid:
+        notify(state, "warning", "Select a session from the table first.")
+        return
+    session = store.get_session(sid)
+    if not session:
+        notify(state, "error", "Session not found.")
+        return
+
+    anon_text = session.anonymized_text or ""
+    entities = session.entities or []
+    label = (session.title or sid[:8]).replace(" ", "_")[:40]
+
+    # Download anonymized text
+    download(state, content=anon_text.encode("utf-8"), name=f"{label}_anonymized.txt")
+
+    # Also download entity CSV if available
+    if entities:
+        df = pd.DataFrame(entities)
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        download(state, content=csv_bytes, name=f"{label}_entities.csv")
+
+    store.log_user_action("user", "session.download", "session", sid,
+                          f"Downloaded session '{session.title}'")
+    notify(state, "success", f"Session '{session.title}' downloaded.")
+
+
 def on_file_upload(state, action, payload):
     """Called when user uploads a file — cache raw bytes outside Taipy state."""
     _MAX_BYTES = 50 * 1024 * 1024  # 50 MB

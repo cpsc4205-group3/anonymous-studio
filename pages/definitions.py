@@ -1015,7 +1015,10 @@ QT = """
 <|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
 |>
 <|{qt_sessions_data}|table|columns=ID;Title;Operator;Entities;Created|show_all=False|page_size=6|filter=True|sortable=True|on_action=on_qt_session_select|>
-<|Load Session|button|on_action=on_qt_load_session|class_name=secondary|render={qt_selected_session!=""}|>
+<|layout|columns=1 1|gap=8px|render={qt_selected_session!=""}|
+<|Load Session|button|on_action=on_qt_load_session|class_name=secondary|>
+<|Download Session|button|on_action=on_qt_download_session|class_name=secondary|>
+|>
 |>
 
 <|{qt_settings_open}|dialog|title=Detection Settings|on_action=on_qt_settings_close|width=720px|
