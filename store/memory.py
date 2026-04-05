@@ -31,7 +31,7 @@ import logging
 from store.base import StoreBase
 from store.models import (
     _now, _uid,
-    PIISession, PipelineCard, Appointment, AuditEntry,
+    PIISession, PipelineCard, Appointment, AuditEntry, UserAccount,
 )
 
 _log = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class MemoryStore(StoreBase):
 
     def __init__(self, seed: bool = True):
         self._sessions: Dict[str, PIISession] = {}
+        self._users: Dict[str, UserAccount] = {}
         self._cards: Dict[str, PipelineCard] = {}
         self._appointments: Dict[str, Appointment] = {}
         self._audit: List[AuditEntry] = []
@@ -90,6 +91,52 @@ class MemoryStore(StoreBase):
 
     def list_sessions(self) -> List[PIISession]:
         return sorted(self._sessions.values(), key=lambda s: s.created_at, reverse=True)
+
+    def list_sessions_by_card(self, card_id: str) -> List[PIISession]:
+        return sorted(
+            [s for s in self._sessions.values() if s.pipeline_card_id == card_id],
+            key=lambda s: s.created_at,
+            reverse=True,
+        )
+
+    def update_session(self, session_id: str, **kwargs) -> Optional[PIISession]:
+        session = self._sessions.get(session_id)
+        if not session:
+            return None
+        for k, v in kwargs.items():
+            if hasattr(session, k):
+                setattr(session, k, v)
+        self._log(
+            "system", "session.update", "session", session_id,
+            f"Updated session: {', '.join(kwargs.keys())}",
+        )
+        return session
+
+    def create_user(self, user: UserAccount) -> UserAccount:
+        self._users[user.id] = user
+        self._log("system", "auth.register", "user", user.id, f"Registered {user.email}")
+        return user
+
+    def get_user(self, user_id: str) -> Optional[UserAccount]:
+        return self._users.get(user_id)
+
+    def get_user_by_email(self, email: str) -> Optional[UserAccount]:
+        target = str(email or "").strip().lower()
+        return next((u for u in self._users.values() if u.email.lower() == target), None)
+
+    def update_user(self, user_id: str, **kwargs) -> Optional[UserAccount]:
+        user = self._users.get(user_id)
+        if not user:
+            return None
+        for k, v in kwargs.items():
+            if hasattr(user, k):
+                setattr(user, k, v)
+        user.updated_at = _now()
+        self._log("system", "auth.user_update", "user", user_id, f"Updated user: {', '.join(kwargs.keys())}")
+        return user
+
+    def list_users(self) -> List[UserAccount]:
+        return sorted(self._users.values(), key=lambda u: (u.created_at, u.email))
 
     # ── Pipeline Cards ─────────────────────────────────────────────────────────
 
@@ -305,6 +352,107 @@ class MemoryStore(StoreBase):
                 status="backlog", assignee="Elijah Jenkins", priority="low",
                 labels=["contracts"],
             ),
+            # ── Extra work: outstanding feature backlog from project issues ──
+            PipelineCard(
+                id="card-006", title="Allowlist / Denylist Support",
+                description=(
+                    "Add allow_list and deny_list inputs to PII Text page. "
+                    "Pass allow_list= to analyzer.analyze() and use "
+                    "ad_hoc_recognizers=[PatternRecognizer(deny_list=...)] for denylist."
+                ),
+                status="done", priority="medium",
+                labels=["feature", "pii-engine"],
+            ),
+            PipelineCard(
+                id="card-007", title="Encrypt Operator Key Management",
+                description=(
+                    "Implement encrypt operator in pii_engine.py. Add 'encrypt' option "
+                    "to UI operator selector. Add UI field for AES encryption key "
+                    "(128/192/256-bit). Store key securely via env var (ANON_ENCRYPT_KEY). "
+                    "Enable DeanonymizeEngine decrypt round-trip for reversible anonymization."
+                ),
+                status="in_progress", priority="medium",
+                labels=["feature", "security"],
+            ),
+            PipelineCard(
+                id="card-008", title="ORGANIZATION Entity Support",
+                description=(
+                    "Add ORGANIZATION to ALL_ENTITIES in pii_engine.py. "
+                    "Configure ORG→ORGANIZATION NLP mapping with 0.4 confidence "
+                    "multiplier to reduce false positives."
+                ),
+                status="done", priority="low",
+                labels=["feature", "pii-engine"],
+            ),
+            PipelineCard(
+                id="card-009", title="REST API for PII Detection",
+                description=(
+                    "Build REST API endpoints for PII detection, de-identification, "
+                    "and pipeline CRUD using FastAPI. Add API key authentication "
+                    "and Swagger documentation."
+                ),
+                status="done", priority="high",
+                labels=["feature", "api"],
+            ),
+            PipelineCard(
+                id="card-010", title="MongoDB Persistence Layer",
+                description=(
+                    "Implement MongoStore backend for persistent storage of sessions, "
+                    "cards, appointments, and audit logs. Read MONGODB_URI from env. "
+                    "Replace in-memory store for production use."
+                ),
+                status="done", assignee="Sakshi Patel", priority="critical",
+                labels=["feature", "infrastructure"],
+            ),
+            PipelineCard(
+                id="card-011", title="Export Audit Logs as CSV/JSON",
+                description=(
+                    "Add download buttons to export audit log and pipeline data "
+                    "in CSV and JSON formats for compliance documentation sharing."
+                ),
+                status="done", priority="medium",
+                labels=["feature", "compliance"],
+            ),
+            PipelineCard(
+                id="card-012", title="Image PII Detection via OCR",
+                description=(
+                    "Accept PNG/JPG uploads, extract text via Tesseract OCR, "
+                    "then apply Presidio PII detection to the extracted text. "
+                    "Display annotated results."
+                ),
+                status="backlog", priority="low",
+                labels=["feature", "ocr"],
+            ),
+            PipelineCard(
+                id="card-013", title="Role-Based Authentication",
+                description=(
+                    "Implement user login with email/password and role-based access "
+                    "(Admin, Compliance Officer, Developer, Researcher). "
+                    "Store hashed passwords in MongoDB."
+                ),
+                status="backlog", priority="high",
+                labels=["feature", "security"],
+            ),
+            PipelineCard(
+                id="card-014", title="Compliance Review Notifications",
+                description=(
+                    "Send email or in-app notifications 24 hours before scheduled "
+                    "review appointments. Include appointment details and linked "
+                    "pipeline card information."
+                ),
+                status="backlog", priority="medium",
+                labels=["feature", "compliance"],
+            ),
+            PipelineCard(
+                id="card-015", title="File Attachments on Pipeline Cards",
+                description=(
+                    "Allow users to attach anonymized output files (CSV, TXT, JSON) "
+                    "to pipeline cards. Support multiple attachments per card "
+                    "with download capability."
+                ),
+                status="backlog", priority="medium",
+                labels=["feature", "pipeline"],
+            ),
         ]
         for card in demo_cards:
             self._cards[card.id] = card
@@ -341,3 +489,34 @@ class MemoryStore(StoreBase):
                   "Moved 'HR Records PII Scrub' from backlog → in_progress")
         self._log("diamond.hogans", "compliance.attest", "card", "card-003",
                   "Attested research dataset")
+
+        from services.local_auth import hash_password
+
+        demo_users = [
+            UserAccount(
+                email="admin@anonstudio.local",
+                full_name="Admin User",
+                role="Admin",
+                password_hash=hash_password("AdminPass123!"),
+            ),
+            UserAccount(
+                email="compliance@anonstudio.local",
+                full_name="Compliance Officer",
+                role="Compliance Officer",
+                password_hash=hash_password("Compliance123!"),
+            ),
+            UserAccount(
+                email="developer@anonstudio.local",
+                full_name="Developer User",
+                role="Developer",
+                password_hash=hash_password("Developer123!"),
+            ),
+            UserAccount(
+                email="researcher@anonstudio.local",
+                full_name="Researcher User",
+                role="Researcher",
+                password_hash=hash_password("Research123!"),
+            ),
+        ]
+        for user in demo_users:
+            self._users[user.id] = user

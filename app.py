@@ -10,9 +10,12 @@ Pages
   /audit      — immutable compliance audit log
 """
 from __future__ import annotations
+import dataclasses
+import json
 import numbers
 import logging
-import os, re, time, warnings, tempfile
+import os, re, time, warnings, tempfile, mimetypes
+
 from threading import Thread
 
 _log = logging.getLogger(__name__)
@@ -21,6 +24,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
 load_dotenv()  # load .env before any os.environ reads (no-op if file absent)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="spacy")
@@ -28,6 +32,22 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 warnings.filterwarnings("ignore", message="urllib3.*", category=UserWarning)
 
 import pandas as pd
+import requests
+API_URL = "http://127.0.0.1:8000"
+
+def get_pipeline_cards():
+    try:
+        response = requests.get(f"{API_URL}/pipeline-cards")
+        return response.json()
+    except Exception as e:
+        print("API not ready yet:", e)
+        return []
+
+print("\n===== DEBUG START =====")
+cards = get_pipeline_cards()
+print("PIPELINE CARDS:", cards)
+print("===== DEBUG END =====\n")
+
 try:
     import plotly.graph_objects as go
 except Exception:  # optional: fallback if plotly is unavailable in env
@@ -79,6 +99,7 @@ from services.jobs import (
     build_job_config,
     build_queue_quality_md,
     build_result_quality_md,
+    build_sample_df,
     latest_cancellable_job,
     new_job_id,
     parse_upload_to_df,
@@ -109,6 +130,8 @@ from services.telemetry import (
     get_telemetry_snapshot,
     get_recent_events,
 )
+from services.local_auth import VALID_ROLES, authenticate_user, register_user
+
 from services.synthetic import SyntheticConfig, synthesize_from_anonymized_text
 
 store  = get_store()
@@ -285,6 +308,83 @@ def _priority_to_severity(priority: str) -> str:
     return {"critical": "critical", "high": "warning"}.get(str(priority).lower(), "info")
 
 
+def _get_user_label(state) -> str:
+    return str(getattr(state, "current_user_name", "") or getattr(state, "current_user_email", "") or "Unknown User")
+
+
+def _is_authenticated(state) -> bool:
+    return bool(getattr(state, "is_authenticated", False) and getattr(state, "current_user_role", ""))
+
+
+def _menu_for_role(role: str, is_authenticated_flag: bool) -> List[tuple[str, Icon]]:
+    if not is_authenticated_flag:
+        return [("auth", Icon("images/audit.svg", "Access"))]
+    allowed_pages = [page for page, roles in PAGE_ROLE_RULES.items() if role in roles and page != "auth"]
+    return [item for item in BASE_MENU_LOV if item[0] in allowed_pages]
+
+
+def _can_access_page(state, page: str) -> bool:
+    if page == "auth":
+        return True
+    if not _is_authenticated(state):
+        return False
+    return getattr(state, "current_user_role", "") in PAGE_ROLE_RULES.get(page, set())
+
+
+def _sync_auth_ui(state) -> None:
+    state.menu_lov = _menu_for_role(str(getattr(state, "current_user_role", "")), _is_authenticated(state))
+    if _is_authenticated(state):
+        state.auth_profile_md = (
+            f"Signed in as **{_get_user_label(state)}**  \n"
+            f"Email: `{state.current_user_email}`  \n"
+            f"Role: **{state.current_user_role}**"
+        )
+        allowed_pages = [page for page, roles in PAGE_ROLE_RULES.items() if page != "auth" and state.current_user_role in roles]
+        state.auth_access_md = "Accessible pages: " + ", ".join(page.replace("_", " ").title() for page in allowed_pages)
+    else:
+        state.auth_profile_md = "Not signed in."
+        state.auth_access_md = ""
+
+
+def _clear_auth_form(state) -> None:
+    state.auth_email = ""
+    state.auth_password = ""
+    state.auth_confirm_password = ""
+    state.auth_full_name = ""
+    state.auth_role = "Researcher"
+
+
+def _set_authenticated_user(state, user) -> None:
+    state.is_authenticated = True
+    state.current_user_id = user.id
+    state.current_user_email = user.email
+    state.current_user_name = user.full_name or user.email
+    state.current_user_role = user.role
+    _sync_auth_ui(state)
+
+
+def _clear_authenticated_user(state) -> None:
+    state.is_authenticated = False
+    state.current_user_id = ""
+    state.current_user_email = ""
+    state.current_user_name = ""
+    state.current_user_role = ""
+    _sync_auth_ui(state)
+
+
+def _require_action_role(state, action: str, feature_label: str) -> bool:
+    allowed_roles = ACTION_ROLE_RULES.get(action, set())
+    if not _is_authenticated(state):
+        notify(state, "warning", "Please sign in first.")
+        navigate(state, "auth")
+        return False
+    if allowed_roles and getattr(state, "current_user_role", "") not in allowed_roles:
+        notify(state, "error", f"{feature_label} is restricted for the {state.current_user_role} role.")
+        return False
+    return True
+
+
+
 def _normalize_geo_token(value: Any) -> str:
     """Compatibility wrapper around geo helper module."""
     return normalize_geo_token_base(value)
@@ -346,7 +446,8 @@ if os.environ.get("ANON_MODE", "development") == "standalone":
 # ── Navigation ────────────────────────────────────────────────────────────────
 active_page = "dashboard"
 
-menu_lov = [
+BASE_MENU_LOV = [
+    ("auth",      Icon("images/audit.svg",      "Access")),
     ("dashboard", Icon("images/dashboard.svg", "Dashboard")),
     ("analyze",   Icon("images/piitext.svg",   "Analyze Text")),
     ("jobs",      Icon("images/jobs.svg",       "Batch Jobs")),
@@ -356,6 +457,45 @@ menu_lov = [
     ("telemetry", Icon("images/dashboard.svg",  "Telemetry")),
     ("ui_demo",   Icon("images/dashboard.svg",  "UI")),
 ]
+menu_lov = [("auth", Icon("images/audit.svg", "Access"))]
+
+PAGE_ROLE_RULES: Dict[str, set[str]] = {
+    "auth": set(VALID_ROLES),
+    "dashboard": set(VALID_ROLES),
+    "analyze": set(VALID_ROLES),
+    "jobs": {"Admin", "Compliance Officer", "Developer"},
+    "pipeline": {"Admin", "Compliance Officer", "Developer"},
+    "schedule": {"Admin", "Compliance Officer"},
+    "audit": {"Admin", "Compliance Officer"},
+    "ui_demo": {"Admin", "Compliance Officer", "Developer"},
+}
+
+ACTION_ROLE_RULES: Dict[str, set[str]] = {
+    "audit_export": {"Admin", "Compliance Officer"},
+    "pipeline_export": {"Admin", "Compliance Officer", "Developer"},
+    "appointment_manage": {"Admin", "Compliance Officer"},
+    "card_manage": {"Admin", "Compliance Officer", "Developer"},
+    "card_attest": {"Admin", "Compliance Officer"},
+    "job_submit": {"Admin", "Compliance Officer", "Developer"},
+    "demo_seed": {"Admin", "Compliance Officer", "Developer"},
+}
+
+auth_mode = "Sign In"
+auth_mode_lov = ["Sign In", "Register"]
+auth_email = ""
+auth_password = ""
+auth_confirm_password = ""
+auth_full_name = ""
+auth_role = "Researcher"
+auth_role_lov = list(VALID_ROLES)
+auth_status_md = ""
+auth_profile_md = "Not signed in."
+auth_access_md = ""
+is_authenticated = False
+current_user_id = ""
+current_user_email = ""
+current_user_name = ""
+current_user_role = ""
 
 # ── Quick-text PII (inline mode, no file upload needed) ──────────────────────
 spacy_status = get_spacy_model_status()
@@ -404,7 +544,7 @@ qt_highlight_md    = ""
 qt_anonymized      = ""
 qt_anonymized_raw  = ""          # raw text for session save (no markdown)
 qt_entity_rows     = pd.DataFrame(
-    columns=["Entity Type", "Text", "Confidence", "Confidence Band", "Span", "Recognizer"]
+    columns=["Entity Type", "Text", "Confidence", "Confidence Band", "Span", "Recognizer", "Rationale"]
 )
 qt_summary         = ""
 qt_confidence_md   = "Confidence profile: N/A"
@@ -420,7 +560,10 @@ qt_kpi_avg_confidence_ticker = "N/A"
 qt_kpi_low_confidence_ticker = "0"
 qt_last_proc_ms    = 0.0     # timing from last engine.anonymize() call
 qt_session_saved   = False
-qt_sessions_data   = pd.DataFrame(columns=["ID", "Title", "Operator", "Entities", "Created"])
+qt_selected_session = ""   # full session ID from table selection
+qt_sessions_data   = pd.DataFrame(columns=["ID", "Title", "Operator", "Entities", "Created", "full_id"])
+qt_card_f          = ""    # pipeline card ID to attach QT session to (empty = no link)
+qt_card_opts: List[tuple] = [("(no card)", "")]  # lov for card picker in QT page
 qt_entity_chart    = pd.DataFrame(columns=["Entity Type", "Count"])
 qt_entity_figure   = {}
 qt_entity_chart_visible = False
@@ -428,9 +571,9 @@ qt_has_entities    = False
 qt_settings_open   = False
 qt_allowlist_text  = ""   # comma-separated words to never flag as PII
 qt_denylist_text   = ""   # comma-separated words to always flag as PII
-qt_show_rationale  = True  # whether to include Recognizer column in entity table
-QT_COLUMNS_FULL    = "Entity Type;Text;Confidence;Confidence Band;Span;Recognizer"
-QT_COLUMNS_SHORT   = "Entity Type;Text;Confidence;Span"
+qt_show_rationale  = True  # whether to include Recognizer/Rationale columns in entity table
+QT_COLUMNS_FULL    = "Entity Type;Text;Confidence;Confidence Band;Span;Recognizer;Rationale"
+QT_COLUMNS_SHORT   = "Entity Type;Text;Confidence;Confidence Band;Span"
 qt_entity_columns  = QT_COLUMNS_FULL  # dynamically updated by on_qt_show_rationale_change
 qt_ner_model_lov   = [
     "spaCy/en_core_web_lg",
@@ -508,6 +651,9 @@ persp_ready = False
 # Preview table (first 50 rows of result)
 preview_data       = pd.DataFrame()
 preview_cols: List[str]  = []
+job_before_sample_data = pd.DataFrame()
+job_after_sample_data  = pd.DataFrame()
+job_before_after_visible = False
 stats_entity_rows  = pd.DataFrame(columns=["Entity Type", "Count"])
 stats_entity_chart_figure = {}
 job_errors_data    = pd.DataFrame(columns=["Time", "Source", "Details", "Severity"])
@@ -576,6 +722,146 @@ try:
 except Exception:
     _DASH_CACHE_TTL_SEC = 5.0
 
+
+# ── Card attachments (Issue #47) ─────────────────────────────────────────────
+ATTACHMENTS_DIR = os.path.join(tempfile.gettempdir(), "anon_studio_attachments")
+ATTACHMENTS_MANIFEST = os.path.join(ATTACHMENTS_DIR, "card_attachments_manifest.json")
+CARD_ATTACHMENT_COLS = ["id", "Name", "Kind", "Size", "Added", "Download"]
+
+
+def _ensure_attachments_dir():
+    os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
+
+
+def _load_attachment_manifest():
+    _ensure_attachments_dir()
+    if not os.path.exists(ATTACHMENTS_MANIFEST):
+        return {}
+    try:
+        with open(ATTACHMENTS_MANIFEST, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_attachment_manifest(data):
+    _ensure_attachments_dir()
+    with open(ATTACHMENTS_MANIFEST, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _format_size(num_bytes):
+    try:
+        size = int(num_bytes or 0)
+    except Exception:
+        size = 0
+    if size < 1024:
+        return f"{size} B"
+    elif size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    else:
+        return f"{size / (1024 * 1024):.1f} MB"
+
+
+def _list_card_attachments(card_id):
+    manifest = _load_attachment_manifest()
+    return manifest.get(card_id, [])
+
+
+def _attachment_exists(card_id, source_ref):
+    for rec in _list_card_attachments(card_id):
+        if rec.get("source_ref") == source_ref:
+            return True
+    return False
+
+
+def _store_attachment_record(card_id, display_name, saved_name, kind, size_bytes, mime_type="", source_ref=""):
+    manifest = _load_attachment_manifest()
+    record = {
+        "id": _uid(),
+        "card_id": card_id,
+        "display_name": display_name,
+        "saved_name": saved_name,
+        "kind": kind,
+        "size_bytes": size_bytes,
+        "mime_type": mime_type,
+        "created_at": _now(),
+        "source_ref": source_ref,
+    }
+    manifest.setdefault(card_id, []).append(record)
+    _save_attachment_manifest(manifest)
+    return record
+
+
+def _write_attachment_bytes(card_id, content, filename, kind="file", mime_type="", source_ref=""):
+    _ensure_attachments_dir()
+
+    safe_name = secure_filename(filename)
+    ext = os.path.splitext(safe_name)[1]
+    saved_name = f"{card_id[:8]}_{_uid()}{ext}"
+    full_path = os.path.join(ATTACHMENTS_DIR, saved_name)
+
+    with open(full_path, "wb") as f:
+        f.write(content)
+
+    return _store_attachment_record(
+        card_id,
+        safe_name,
+        saved_name,
+        kind,
+        len(content),
+        mime_type or "application/octet-stream",
+        source_ref,
+    )
+
+
+def _attach_text_output_to_card(card_id, text, filename, source_ref=""):
+    return _write_attachment_bytes(
+        card_id,
+        text.encode("utf-8"),
+        filename,
+        kind="text_output",
+        mime_type="text/plain",
+        source_ref=source_ref,
+    )
+
+
+def _find_attachment_record(attachment_id):
+    manifest = _load_attachment_manifest()
+    for records in manifest.values():
+        for rec in records:
+            if rec.get("id") == attachment_id:
+                return rec
+    return None
+
+
+def _delete_card_attachments(card_id):
+    manifest = _load_attachment_manifest()
+    records = manifest.pop(card_id, [])
+
+    for rec in records:
+        path = os.path.join(ATTACHMENTS_DIR, rec.get("saved_name", ""))
+        if os.path.exists(path):
+            os.remove(path)
+
+    _save_attachment_manifest(manifest)
+
+
+def _refresh_card_attachments(state, card_id):
+    records = _list_card_attachments(card_id)
+
+    rows = []
+    for rec in records:
+        rows.append({
+            "id": rec["id"],
+            "Name": rec["display_name"],
+            "Kind": rec["kind"],
+            "Size": _format_size(rec["size_bytes"]),
+            "Added": rec["created_at"][:16],
+            "Download": "Download",
+        })
+
+    state.card_attachments_data = pd.DataFrame(rows, columns=CARD_ATTACHMENT_COLS)
 
 def _progress_from_sources(job_id: str) -> Dict[str, Any]:
     """Get the freshest progress payload from in-memory and durable snapshot."""
@@ -684,12 +970,15 @@ card_id_edit   = ""
 card_title_f   = ""
 card_desc_f    = ""
 card_status_f  = "backlog"
+card_type_f    = "file"
+card_source_f  = ""
 card_assign_f  = ""
 card_priority_f = "medium"
 card_labels_f  = ""
 card_attest_f  = ""
 card_status_opts   = ["backlog", "in_progress", "review", "done"]
 card_priority_opts = ["low", "medium", "high", "critical"]
+card_type_opts     = ["file", "text", "database", "api"]
 card_session_f     = ""        # session_id selected in card form
 card_session_opts: List[str] = ["(none)"]  # populated on form open
 
@@ -707,6 +996,8 @@ gui_auth_source = "unauthenticated"  # "proxy" | "break_glass" | "unauthenticate
 # Per-card audit history dialog
 card_audit_open = False
 card_audit_data = pd.DataFrame(columns=["Time", "Action", "Actor", "Details"])
+card_sessions_data = pd.DataFrame(columns=["ID", "Title", "Operator", "Entities", "Source", "Created"])
+card_attachments_data = pd.DataFrame(columns=CARD_ATTACHMENT_COLS)
 
 # ── Schedule ──────────────────────────────────────────────────────────────────
 appt_table     = pd.DataFrame(columns=["id", "Title", "Date / Time", "Duration", "Attendees", "Linked Card", "Status"])
@@ -2555,7 +2846,7 @@ def _refresh_dashboard(state):
             }
         )
         state.dash_perf_figure = perf_fig
-        state.perf_telemetry_table = pd.DataFrame({"Session": labels, "ms": values})
+        state.perf_telemetry_table = pd.DataFrame({"Session": raw_labels, "ms": values})
         state.dash_perf_visible = True
     else:
         state.dash_perf_avg_ms   = 0.0
@@ -2970,6 +3261,82 @@ def _refresh_ui_demo(state) -> None:
         )
 
 
+def _playground_store_data() -> Optional[Dict[str, Any]]:
+    """Extract chart-ready data series from the store for the Plotly playground.
+
+    Returns ``None`` when the store has no session/entity data, signalling the
+    caller to fall back to sample data.
+    """
+    from collections import defaultdict as _dd
+
+    stats = store.stats()
+    sessions = list(store.list_sessions())
+    entity_breakdown = dict(stats.get("entity_breakdown", {}) or {})
+    pipeline_status = dict(stats.get("pipeline_by_status", {}) or {})
+    sorted_entities = sorted(entity_breakdown.items(), key=lambda x: (-x[1], x[0]))
+
+    if not sorted_entities:
+        return None
+
+    top5 = sorted_entities[:5]
+    labels = [e[0] for e in top5]
+    counts = [int(e[1]) for e in top5]
+
+    # Daily entity trends (last 7 days).
+    # created_at is always an ISO-8601 string from _now() (e.g. "2026-03-08T…").
+    daily: Dict[str, int] = _dd(int)
+    for s in sessions:
+        day = (getattr(s, "created_at", "") or "")[:10]
+        if day:
+            daily[day] += sum((getattr(s, "entity_counts", None) or {}).values())
+    sorted_days = sorted(daily.items())[-7:]
+
+    # Confidence scores per entity type & recognizer × entity cross-tab
+    conf_by_type: Dict[str, List[int]] = _dd(list)
+    all_confs: List[int] = []
+    recog_entity: Dict[str, Dict[str, int]] = _dd(lambda: _dd(int))
+    for sess in sessions:
+        for ent in (getattr(sess, "entities", None) or []):
+            etype = str(ent.get("Entity Type", ent.get("entity_type", "")) or "")
+            conf = ent.get("Confidence")
+            if conf is None:
+                score = ent.get("score")
+                if isinstance(score, (int, float)):
+                    conf = int(round(float(score) * 100))
+            if isinstance(conf, (int, float)):
+                conf_by_type[etype].append(int(conf))
+                all_confs.append(int(conf))
+            recog = str(ent.get("Recognizer", ent.get("recognizer", "")) or "")
+            if etype and recog:
+                recog_entity[recog][etype] += 1
+
+    # Pipeline funnel
+    stage_order = ["backlog", "in_progress", "review", "done"]
+    funnel_stages = [s.replace("_", " ").title() for s in stage_order]
+    funnel_counts = [int(pipeline_status.get(s, 0)) for s in stage_order]
+
+    # Processing-time per session (for candlestick/3d)
+    proc_times = [
+        getattr(s, "processing_ms", 0.0) or 0.0 for s in sessions
+    ]
+
+    return {
+        "labels": labels,
+        "counts": counts,
+        "sorted_entities": sorted_entities,
+        "daily_labels": [d[0] for d in sorted_days] if sorted_days else labels,
+        "daily_counts": [d[1] for d in sorted_days] if sorted_days else counts,
+        "conf_by_type": dict(conf_by_type),
+        "all_confs": all_confs,
+        "recog_entity": {k: dict(v) for k, v in recog_entity.items()},
+        "funnel_stages": funnel_stages,
+        "funnel_counts": funnel_counts,
+        "proc_times": proc_times,
+        "sessions": sessions,
+        "pipeline_status": pipeline_status,
+    }
+
+
 def _refresh_plotly_playground(state) -> None:
     chart_type = str(getattr(state, "ui_plot_type", "bar") or "bar").strip().lower()
     if chart_type not in {
@@ -3048,13 +3415,24 @@ def _refresh_plotly_playground(state) -> None:
         state.ui_plot_playground_figure = {}
         return
 
-    labels = ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "URL", "IP_ADDRESS"]
-    series_a = [34, 21, 17, 12, 9]
-    series_b = [19, 16, 12, 14, 7]
-    points_x = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    points_y = [12, 18, 15, 22, 19, 14, 17]
-    points_z = [9, 14, 13, 11, 16, 12, 10]
-    dates = ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07"]
+    sd = _playground_store_data()
+    using_sample = sd is None
+    if sd is not None:
+        labels = sd["labels"]
+        series_a = sd["counts"]
+        series_b = []
+        points_x = sd["daily_labels"]
+        points_y = sd["daily_counts"]
+        points_z = []
+        dates = sd["daily_labels"]
+    else:
+        labels = ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "URL", "IP_ADDRESS"]
+        series_a = [34, 21, 17, 12, 9]
+        series_b = [19, 16, 12, 14, 7]
+        points_x = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        points_y = [12, 18, 15, 22, 19, 14, 17]
+        points_z = [9, 14, 13, 11, 16, 12, 10]
+        dates = ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07"]
 
     if palette == "mono":
         colors = list(mono_colorway)
@@ -3069,53 +3447,77 @@ def _refresh_plotly_playground(state) -> None:
     if chart_type == "bar":
         if orient_flag == "h":
             fig.add_bar(y=labels, x=series_a, name="Current", orientation="h", marker_color=colors[0])
-            fig.add_bar(y=labels, x=series_b, name="Previous", orientation="h", marker_color=colors[1])
+            if using_sample:
+                fig.add_bar(y=labels, x=series_b, name="Previous", orientation="h", marker_color=colors[1])
             x_title, y_title = "Count", "Entity Type"
         else:
             fig.add_bar(x=labels, y=series_a, name="Current", marker_color=colors[0])
-            fig.add_bar(x=labels, y=series_b, name="Previous", marker_color=colors[1])
+            if using_sample:
+                fig.add_bar(x=labels, y=series_b, name="Previous", marker_color=colors[1])
             x_title, y_title = "Entity Type", "Count"
         fig.update_layout(barmode=barmode)
     elif chart_type == "line":
-        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Current", line=dict(color=colors[0], width=2))
-        fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", line=dict(color=colors[1], width=2))
+        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Detections", line=dict(color=colors[0], width=2))
+        if using_sample:
+            fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", line=dict(color=colors[1], width=2))
         x_title, y_title = "Day", "Detections"
     elif chart_type == "scatter":
+        if not using_sample and sd and sd["conf_by_type"]:
+            sc_x = [int(sd["conf_by_type"].get(l, [0])[0]) if sd["conf_by_type"].get(l) else 0 for l in labels]
+            sc_y = [len(sd["conf_by_type"].get(l, [])) for l in labels]
+            sc_sizes = [max(8, c) for c in series_a]
+        else:
+            sc_x, sc_y, sc_sizes = series_a, series_b, [16, 14, 12, 10, 9]
         fig.add_scatter(
-            x=series_a,
-            y=series_b,
+            x=sc_x,
+            y=sc_y,
             mode=trace_mode,
             name="Entity Clusters",
-            marker=dict(size=[16, 14, 12, 10, 9], color=colors[:5]),
+            marker=dict(size=sc_sizes[:len(labels)], color=colors[:len(labels)]),
             text=labels,
         )
-        x_title, y_title = "Current", "Previous"
+        x_title, y_title = ("Confidence" if not using_sample else "Current"), ("Occurrences" if not using_sample else "Previous")
     elif chart_type == "area":
-        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Current", fill="tozeroy", line=dict(color=colors[0]))
-        fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", fill="tozeroy", line=dict(color=colors[1]))
+        fig.add_scatter(x=points_x, y=points_y, mode=trace_mode, name="Detections", fill="tozeroy", line=dict(color=colors[0]))
+        if using_sample:
+            fig.add_scatter(x=points_x, y=points_z, mode=trace_mode, name="Previous", fill="tozeroy", line=dict(color=colors[1]))
         x_title, y_title = "Day", "Detections"
     elif chart_type == "pie":
         fig.add_pie(labels=labels, values=series_a, hole=0.45, marker=dict(colors=colors[:len(labels)]), textinfo="label+percent")
         x_title, y_title = "", ""
     elif chart_type == "box":
-        fig.add_box(y=[78, 81, 76, 90, 72, 84], name="PERSON", marker_color=colors[0], boxpoints="outliers")
-        fig.add_box(y=[69, 74, 66, 80, 71, 77], name="EMAIL", marker_color=colors[1], boxpoints="outliers")
-        fig.add_box(y=[62, 71, 68, 75, 64, 70], name="PHONE", marker_color=colors[2], boxpoints="outliers")
+        if sd and sd["conf_by_type"]:
+            for i, etype in enumerate(labels[:3]):
+                vals = sd["conf_by_type"].get(etype, [])
+                if vals:
+                    fig.add_box(y=vals, name=etype, marker_color=colors[i % len(colors)], boxpoints="outliers")
+        else:
+            fig.add_box(y=[78, 81, 76, 90, 72, 84], name="PERSON", marker_color=colors[0], boxpoints="outliers")
+            fig.add_box(y=[69, 74, 66, 80, 71, 77], name="EMAIL", marker_color=colors[1], boxpoints="outliers")
+            fig.add_box(y=[62, 71, 68, 75, 64, 70], name="PHONE", marker_color=colors[2], boxpoints="outliers")
         x_title, y_title = "Entity Type", "Confidence %"
     elif chart_type == "histogram":
-        fig.add_histogram(x=[92, 88, 75, 69, 85, 90, 78, 82, 71, 64, 59, 83], name="Confidence", marker_color=colors[0], nbinsx=8, opacity=0.85)
+        hist_data = sd["all_confs"] if sd and sd["all_confs"] else [92, 88, 75, 69, 85, 90, 78, 82, 71, 64, 59, 83]
+        fig.add_histogram(x=hist_data, name="Confidence", marker_color=colors[0], nbinsx=8, opacity=0.85)
         x_title, y_title = "Confidence %", "Frequency"
     elif chart_type == "heatmap":
-        z = [
-            [21, 12, 9, 4],
-            [14, 19, 7, 5],
-            [9, 11, 15, 6],
-            [7, 8, 12, 10],
-        ]
+        if sd and sd["recog_entity"]:
+            recog_names = sorted(sd["recog_entity"].keys())[:4]
+            etype_names = labels[:4]
+            z = [[sd["recog_entity"].get(r, {}).get(e, 0) for e in etype_names] for r in recog_names]
+        else:
+            etype_names = ["PERSON", "EMAIL", "PHONE", "URL"]
+            recog_names = ["Spacy", "Regex", "Denylist", "Custom Regex"]
+            z = [
+                [21, 12, 9, 4],
+                [14, 19, 7, 5],
+                [9, 11, 15, 6],
+                [7, 8, 12, 10],
+            ]
         fig.add_heatmap(
             z=z,
-            x=["PERSON", "EMAIL", "PHONE", "URL"],
-            y=["Spacy", "Regex", "Denylist", "Custom Regex"],
+            x=etype_names,
+            y=recog_names,
             colorscale="Blues",
             colorbar=dict(title="Count"),
         )
@@ -3202,8 +3604,12 @@ def _refresh_plotly_playground(state) -> None:
         )
         x_title, y_title = "", ""
     elif chart_type == "funnel":
-        stages = ["Backlog", "In Progress", "Review", "Done"]
-        stage_counts = [42, 28, 16, 11]
+        if sd and any(sd["funnel_counts"]):
+            stages = sd["funnel_stages"]
+            stage_counts = sd["funnel_counts"]
+        else:
+            stages = ["Backlog", "In Progress", "Review", "Done"]
+            stage_counts = [42, 28, 16, 11]
         fig = go.Figure(
             go.Funnel(
                 y=stages,
@@ -3215,11 +3621,14 @@ def _refresh_plotly_playground(state) -> None:
         )
         x_title, y_title = "Cards", "Pipeline Stage"
     elif chart_type == "violin":
-        violin_data = {
-            "PERSON":        [78, 81, 76, 90, 72, 84, 88, 79, 83, 77, 85, 91],
-            "EMAIL_ADDRESS": [69, 74, 66, 80, 71, 77, 82, 70, 75, 68, 79, 83],
-            "PHONE_NUMBER":  [62, 71, 68, 75, 64, 70, 74, 65, 69, 63, 72, 78],
-        }
+        if sd and sd["conf_by_type"]:
+            violin_data = {k: v for k, v in list(sd["conf_by_type"].items())[:3] if v}
+        else:
+            violin_data = {
+                "PERSON":        [78, 81, 76, 90, 72, 84, 88, 79, 83, 77, 85, 91],
+                "EMAIL_ADDRESS": [69, 74, 66, 80, 71, 77, 82, 70, 75, 68, 79, 83],
+                "PHONE_NUMBER":  [62, 71, 68, 75, 64, 70, 74, 65, 69, 63, 72, 78],
+            }
         for i, (etype, vals) in enumerate(violin_data.items()):
             fig.add_trace(
                 go.Violin(
@@ -3262,10 +3671,13 @@ def _refresh_plotly_playground(state) -> None:
         )
         x_title, y_title = "", ""
 
+    # Charts that always use illustrative sample data
+    _always_sample = {"surface", "choropleth", "candlestick", "3d_scatter", "sankey", "polar_radar"}
+    sample_suffix = " (sample data)" if using_sample or chart_type in _always_sample else ""
     layout_kwargs = dict(
         showlegend=show_legend,
         margin={"t": 42, "b": 56, "l": 56, "r": 24},
-        title=f"Plotly Playground - {chart_type.replace('_', ' ').title()}",
+        title=f"Plotly Playground - {chart_type.replace('_', ' ').title()}{sample_suffix}",
     )
     if chart_type in {"bar", "line", "scatter", "area", "box", "histogram", "heatmap", "candlestick", "funnel", "violin"}:
         layout_kwargs["xaxis"] = {**chart_layout["xaxis"], "title": x_title}
@@ -3331,11 +3743,12 @@ def _qt_rows_from_entities(entities: List[Dict[str, Any]]) -> pd.DataFrame:
                 "Confidence Band": _confidence_band(score_pct),
                 "Span": f"{ent.get('start', '?')}–{ent.get('end', '?')}",
                 "Recognizer": ent.get("recognizer", ""),
+                "Rationale": ent.get("rationale", ""),
             }
         )
     return pd.DataFrame(
         rows,
-        columns=["Entity Type", "Text", "Confidence", "Confidence Band", "Span", "Recognizer"],
+        columns=["Entity Type", "Text", "Confidence", "Confidence Band", "Span", "Recognizer", "Rationale"],
     )
 
 
@@ -3470,6 +3883,12 @@ def on_init(state):
         state.gui_auth_source = "unauthenticated"
     # ── End identity binding ─────────────────────────────────────────────────
     _register_live_state(state)
+    _clear_authenticated_user(state)
+    state.auth_mode = "Sign In"
+    state.auth_mode_lov = ["Sign In", "Register"]
+    state.auth_role_lov = list(VALID_ROLES)
+    state.auth_status_md = ""
+    _clear_auth_form(state)
     state.store_status = describe_store_backend()
     state.store_status_label, state.store_status_hover = _store_status_ui(state.store_status)
     state.raw_input_status_label, state.raw_input_status_hover = _raw_input_backend_ui()
@@ -3502,12 +3921,84 @@ def on_init(state):
         _set_qt_entity_state(state, ents)
     except Exception:
         pass
-    navigate(state, "dashboard")
+    navigate(state, "auth")
 
 
 # ── Navigation ────────────────────────────────────────────────────────────────
+def on_auth_mode_change(state, var_name=None, value=None):
+    state.auth_mode = str(value or state.auth_mode or "Sign In")
+    state.auth_status_md = ""
+
+
+def on_auth_toggle_mode(state):
+    state.auth_mode = "Register" if state.auth_mode == "Sign In" else "Sign In"
+    state.auth_status_md = ""
+
+
+def on_auth_clear(state):
+    _clear_auth_form(state)
+    state.auth_status_md = ""
+
+
+def on_auth_register(state):
+    ok, message, user = register_user(
+        store,
+        email=state.auth_email,
+        password=state.auth_password,
+        confirm_password=state.auth_confirm_password,
+        role=state.auth_role,
+        full_name=state.auth_full_name,
+    )
+    if not ok:
+        state.auth_status_md = f"**Registration error:** {message}"
+        notify(state, "error", message)
+        return
+    store.log_user_action(user.email, "auth.register", "user", user.id, f"Registered with role {user.role}")
+    _set_authenticated_user(state, user)
+    _clear_auth_form(state)
+    state.auth_status_md = f"**Account created.** Signed in as `{user.email}`."
+    notify(state, "success", message)
+    navigate(state, "dashboard")
+
+
+def on_auth_login(state):
+    ok, message, user = authenticate_user(store, email=state.auth_email, password=state.auth_password)
+    if not ok:
+        state.auth_status_md = f"**Sign-in error:** {message}"
+        notify(state, "error", message)
+        return
+    store.log_user_action(user.email, "auth.login", "user", user.id, f"Signed in as {user.role}")
+    _set_authenticated_user(state, user)
+    _clear_auth_form(state)
+    state.auth_status_md = f"**Signed in.** Welcome back, `{user.email}`."
+    notify(state, "success", message)
+    navigate(state, "dashboard")
+
+
+def on_auth_logout(state):
+    actor = getattr(state, "current_user_email", "") or "anonymous"
+    user_id = getattr(state, "current_user_id", "")
+    if actor and user_id:
+        store.log_user_action(actor, "auth.logout", "user", user_id, "Signed out")
+    _clear_authenticated_user(state)
+    _clear_auth_form(state)
+    state.auth_status_md = "You have been signed out."
+    notify(state, "info", "Signed out.")
+    navigate(state, "auth")
+
+
+def on_auth_go_dashboard(state):
+    if not _is_authenticated(state):
+        notify(state, "warning", "Please sign in first.")
+        navigate(state, "auth")
+        return
+    navigate(state, "dashboard")
+    _refresh_dashboard(state)
+
+
 def on_menu_action(state, id, payload):
-    valid_pages = {"dashboard", "analyze", "jobs", "pipeline", "schedule", "audit", "ui_demo", "telemetry"}
+    valid_pages = {"auth", "dashboard", "analyze", "jobs", "pipeline", "schedule", "audit", "ui_demo", "telemetry"}
+
 
     def _normalize_page(value: Any) -> Optional[str]:
         if not isinstance(value, str):
@@ -3541,9 +4032,14 @@ def on_menu_action(state, id, payload):
     if page is None:
         page = _normalize_page(id)
     if page is None:
-        page = "dashboard"
+        page = "auth" if not _is_authenticated(state) else "dashboard"
+    if not _can_access_page(state, page):
+        notify(state, "warning", "That page is not available for your current role.")
+        page = "auth" if not _is_authenticated(state) else "dashboard"
     navigate(state, page)
-    if page == "dashboard":
+    if page == "auth":
+        _sync_auth_ui(state)
+    elif page == "dashboard":
         _refresh_dashboard(state)
     elif page == "analyze":
         _refresh_sessions(state)
@@ -3918,6 +4414,7 @@ def _parse_word_lists(state) -> tuple[list, list]:
     return allowlist, denylist
 
 
+
 def on_qt_analyze(state):
     if not state.qt_input.strip():
         notify(state, "warning", "Enter some text first.")
@@ -3937,6 +4434,25 @@ def on_qt_analyze(state):
     else:
         notify(state, "success", "No PII detected.")
 
+
+    try:
+        response = requests.post(
+            "http://127.0.0.1:8000/detect-pii",
+            json={"text": state.qt_input}
+        )
+        result = response.json()
+
+        state.qt_highlight_md = str(result)
+        state.qt_entity_rows = []
+        state.qt_entity_chart_visible = False
+
+        if "Possible email detected" in str(result):
+            notify(state, "warning", "PII detected through API.")
+        else:
+            notify(state, "success", "No PII detected through API.")
+    except Exception as e:
+        notify(state, "error", f"API error: {e}")
+    
 
 def on_qt_ner_model_change(state, var_name=None, value=None):
     selected = str(value if value is not None else getattr(state, "qt_ner_model_sel", "") or "").strip()
@@ -3970,6 +4486,10 @@ def on_qt_ner_model_change(state, var_name=None, value=None):
 
 
 def on_qt_anonymize(state):
+    if not _is_authenticated(state):
+        notify(state, "warning", "Please sign in to analyze text.")
+        navigate(state, "auth")
+        return
     if not state.qt_input.strip():
         notify(state, "warning", "Enter some text first.")
         return
@@ -4212,7 +4732,7 @@ def on_qt_clear(state):
     state.qt_anonymized_raw = ""
     state.qt_highlight_md = ""
     state.qt_entity_rows = pd.DataFrame(
-        columns=["Entity Type", "Text", "Confidence", "Confidence Band", "Span", "Recognizer"]
+        columns=["Entity Type", "Text", "Confidence", "Confidence Band", "Span", "Recognizer", "Rationale"]
     )
     state.qt_entity_chart = pd.DataFrame(columns=["Entity Type", "Count"])
     state.qt_entity_figure = {}
@@ -4242,20 +4762,37 @@ def _refresh_sessions(state):
             "Operator": s.operator,
             "Entities": sum(s.entity_counts.values()) if s.entity_counts else 0,
             "Created":  s.created_at[5:16].replace("T", " "),
+            "full_id":  s.id,
         }
         for s in sessions
     ]
-    state.qt_sessions_data = pd.DataFrame(rows, columns=["ID", "Title", "Operator", "Entities", "Created"])
-
+    state.qt_sessions_data = pd.DataFrame(rows, columns=["ID", "Title", "Operator", "Entities", "Created", "full_id"])
+    # Refresh card picker options for QT page session attachment
+    cards = store.list_cards()
+    card_options: List[tuple] = [("(no card)", "")]
+    for c in cards:
+        status_label = str(getattr(c, "status", "")).replace("_", " ").title()
+        title = str(getattr(c, "title", "") or "").strip()[:42]
+        card_options.append((f"{c.id[:8]} | {title} | {status_label}", c.id))
+    state.qt_card_opts = card_options
 
 def on_qt_save_session(state):
     if not state.qt_anonymized_raw:
         notify(state, "warning", "Run Anonymize first before saving.")
         return
+
     title = (state.qt_input.strip().splitlines()[0][:50] or "Untitled Session")
     counts: Dict[str, int] = {}
     for _, row in state.qt_entity_rows.iterrows():
         counts[row["Entity Type"]] = counts.get(row["Entity Type"], 0) + 1
+
+    raw_card = getattr(state, "qt_card_f", "") or ""
+
+    if isinstance(raw_card, (list, tuple)) and len(raw_card) >= 2:
+        card_id = str(raw_card[1]).strip()
+    else:
+        card_id = str(raw_card).strip()
+
     session = PIISession(
         title=title,
         original_text=state.qt_input,
@@ -4265,15 +4802,113 @@ def on_qt_save_session(state):
         operator=state.qt_operator,
         source_type="text",
         processing_ms=float(getattr(state, "qt_last_proc_ms", 0.0) or 0.0),
+        pipeline_card_id=card_id or None,
     )
-    store.add_session(session)
-    _invalidate_store_caches()
-    store.log_user_action("user", "session.save", "session", session.id,
-                          f"Saved session '{title}' ({len(counts)} entity types)")
+
+    try:
+        store.add_session(session)
+    except Exception as e:
+        notify(state, "error", f"Failed to save session: {e}")
+        return
+
+    try:
+        store.log_user_action(
+            "user",
+            "session.save",
+            "session",
+            session.id,
+            f"Saved session '{title}' ({len(counts)} entity types)"
+        )
+    except Exception:
+        pass
+
+    if card_id:
+        try:
+            all_cards = store.list_cards()
+            linked_card = next(
+                (c for c in all_cards if str(getattr(c, "id", "")) == card_id),
+                None
+            )
+
+            if linked_card:
+                store.update_card(card_id, session_id=session.id)
+
+                try:
+                    store.log_user_action(
+                        "user",
+                        "session.attach",
+                        "card",
+                        card_id,
+                        f"Session {session.id[:8]} attached to '{linked_card.title}'",
+                        severity=_priority_to_severity(
+                            getattr(linked_card, "priority", "medium")
+                        ),
+                    )
+                except Exception:
+                    pass
+            else:
+                notify(state, "warning", "Selected card not found — session saved without card link.")
+
+        except Exception as e:
+            notify(state, "warning", f"Session saved, but card link failed: {e}")
+
+
     state.qt_session_saved = True
-    _refresh_sessions(state)
-    _refresh_dashboard(state)
-    notify(state, "success", f"Session saved (ID: {session.id[:8]})")
+
+    try:
+        _refresh_sessions(state)
+    except Exception:
+        pass
+
+    try:
+        _refresh_dashboard(state)
+    except Exception:
+        pass
+
+    notify(
+        state,
+        "success",
+        f"Session saved (ID: {session.id[:8]})" + (f" → card {card_id[:8]}" if card_id else "")
+    )    
+
+
+def on_qt_load_session(state):
+    """Load a previously saved session back into the PII Text page.
+
+    Restored entities reflect the original detection configuration (threshold,
+    entity types, operator) at the time the session was saved — not the current
+    settings panel values.
+    """
+    sid = state.qt_selected_session
+    if not sid:
+        notify(state, "warning", "Select a session from the table first.")
+        return
+    session = store.get_session(sid)
+    if not session:
+        notify(state, "error", "Session not found.")
+        return
+    state.qt_input = session.original_text or ""
+    state.qt_anonymized_raw = session.anonymized_text or ""
+    state.qt_anonymized = _format_anon_md(session.anonymized_text) if session.anonymized_text else ""
+    state.qt_operator = session.operator or "replace"
+    ents = session.entities or []
+    state.qt_highlight_md = highlight_md(state.qt_input, ents)
+    _set_qt_entity_state(state, ents)
+    state.qt_session_saved = True
+    store.log_user_action("user", "session.load", "session", sid,
+                          f"Loaded session '{session.title}'")
+    _refresh_audit(state)
+    notify(state, "success", f"Session '{session.title}' loaded.")
+
+
+def on_qt_session_select(state, var_name, value):
+    """Handle row click on the saved sessions table — store full session ID."""
+    row = _get_table_row_from_action_payload(state.qt_sessions_data, value)
+    if not row:
+        return
+    sid = str(row.get("full_id", "") or "")
+    if sid:
+        state.qt_selected_session = sid
 
 
 def on_file_upload(state, action, payload):
@@ -4319,6 +4954,7 @@ def on_file_upload(state, action, payload):
     except Exception:
         _log.exception("upload_error")
         notify(state, "error", "File upload failed. Check the file and try again.")
+
 
 
 def _bg_submit_job(raw_df, config):
@@ -4490,7 +5126,9 @@ def on_submission_status_change(state, submittable, details):
         _refresh_job_table(state)
 
 def on_submit_job(state):
-    """Validate inputs, parse the file, and submit directly to the Orchestrator."""
+    """Validate inputs, parse the file, then fire invoke_long_callback."""
+    if not _require_action_role(state, "job_submit", "Batch job submission"):
+        return
     # Resolve bytes from per-session cache (preferred) or Taipy's bound variable (fallback)
     sid = get_state_id(state)
     raw_bytes, _slot = resolve_upload_bytes(state, _FILE_CACHE, sid)
@@ -4700,6 +5338,11 @@ def _load_job_results(state, jid: str):
         else:
             state.stats_entity_chart_figure = {}
         state.job_quality_md = build_result_quality_md(stats_data, anon_df)
+        before_df = build_sample_df((stats_data or {}).get("sample_before"))
+        after_df  = build_sample_df((stats_data or {}).get("sample_after"))
+        state.job_before_sample_data  = before_df
+        state.job_after_sample_data   = after_df
+        state.job_before_after_visible = not before_df.empty or not after_df.empty
         if anon_df is not None and not anon_df.empty:
             preview = anon_df.head(50)
             state.preview_data         = preview
@@ -4713,13 +5356,54 @@ def _load_job_results(state, jid: str):
                 state.persp_ready = True
             except Exception:
                 state.persp_ready = False
-        # Move linked card to review
+        # Move linked card to review and create a PIISession for traceability
         for c in store.list_cards():
             if getattr(c, 'job_id', None) == jid and c.status == "in_progress":
                 store.update_card(c.id, status="review")
                 store.log_user_action("system", "pipeline.auto_move", "card", c.id,
                           f"Auto-moved to review after job {jid[:8]} completed",
                           severity=_priority_to_severity(getattr(c, "priority", "medium")))
+                # Create a PIISession that captures this job's inputs/outputs/metadata
+                # and links it back to the originating pipeline card.
+                try:
+                    entity_counts: Dict[str, int] = {}
+                    if stats_data:
+                        entity_counts = dict(stats_data.get("entity_counts") or {})
+                    cfg_data: Dict = {}
+                    try:
+                        cfg_data = sc.job_config.read() or {}
+                    except Exception:
+                        # Best-effort: if job config cannot be read, continue with defaults.
+                        _log.debug("Unable to read job config for session creation", exc_info=True)
+                    sample_rows: List[Dict] = []
+                    if stats_data:
+                        for item in (stats_data.get("sample_before") or [])[:5]:
+                            sample_rows.append({"text": str(item), "entity_type": "", "score": 0.0,
+                                                "start": 0, "end": 0, "recognizer": ""})
+                    fname = str(cfg_data.get("file_name", "") or "")
+                    operator = str(cfg_data.get("operator", "replace") or "replace")
+                    session = PIISession(
+                        title=f"File job {jid[:8]}" + (f" — {fname}" if fname else ""),
+                        original_text=fname,
+                        anonymized_text="",
+                        entities=sample_rows,
+                        entity_counts=entity_counts,
+                        operator=operator,
+                        source_type="file",
+                        file_name=fname or None,
+                        pipeline_card_id=c.id,
+                        processing_ms=float(stats_data.get("duration_s", 0) or 0) * 1000.0
+                        if stats_data else 0.0,
+                    )
+                    store.add_session(session)
+                    store.update_card(c.id, session_id=session.id)
+                    store.log_user_action(
+                        "system", "session.attach", "card", c.id,
+                        f"Session {session.id[:8]} auto-attached on job {jid[:8]} completion",
+                        severity=_priority_to_severity(getattr(c, "priority", "medium")),
+                    )
+                except Exception:
+                    _log.exception("session_create_error")
         _refresh_pipeline(state)
         _refresh_audit(state)
         _refresh_job_errors(state)
@@ -4997,37 +5681,82 @@ def on_promote_primary(state):
 
 # ── Pipeline / Kanban ─────────────────────────────────────────────────────────
 def on_card_new(state):
+    
+    state.card_attest_f = ""
+    if not _require_action_role(state, "card_manage", "Pipeline editing"):
+        return
     state.card_id_edit = ""; state.card_title_f   = ""
     state.card_desc_f  = ""; state.card_status_f  = "backlog"
+    state.card_type_f  = "file"; state.card_source_f = ""
     state.card_assign_f = ""; state.card_priority_f = "medium"
     state.card_labels_f = ""; state.card_attest_f   = ""
+    state.card_session_f = "(none)"
+    state.card_session_opts = ["(none)"] + [
+        
+    ]
+    state.card_form_open = True
+def on_card_new(state):
+    if not _require_action_role(state, "card_manage", "Pipeline editing"):
+        return
+
+    state.card_id_edit = ""
+    state.card_title_f = ""
+    state.card_desc_f = ""
+    state.card_status_f = "backlog"
+    state.card_type_f = "file"
+    state.card_source_f = ""
+    state.card_assign_f = ""
+    state.card_priority_f = "medium"
+    state.card_labels_f = ""
+    state.card_attest_f = ""
     state.card_session_f = "(none)"
     state.card_session_opts = ["(none)"] + [
         f"{s.id[:8]} — {s.title[:35]}" for s in store.list_sessions()
     ]
     state.card_form_open = True
 
-
 def on_card_save(state):
+    if not _require_action_role(state, "card_manage", "Pipeline editing"):
+        return
     if not state.card_title_f.strip():
-        notify(state, "error", "Title is required."); return
+        notify(state, "error", "Title is required.")
+        return
+
     labels = [l.strip() for l in state.card_labels_f.split(",") if l.strip()]
+
     # Resolve selected session: "(none)" or "abc12345 — title"
     sel = state.card_session_f or "(none)"
     new_session_id = None if sel == "(none)" else sel.split(" — ")[0].strip()
+
     if state.card_id_edit:
         existing = store.get_card(state.card_id_edit)
-        store.update_card(state.card_id_edit,
-                          title=state.card_title_f, description=state.card_desc_f,
-                          status=state.card_status_f, assignee=state.card_assign_f,
-                          priority=state.card_priority_f, labels=labels,
-                          attestation=state.card_attest_f,
-                          session_id=new_session_id)
-        store.log_user_action("user", "pipeline.update", "card", state.card_id_edit,
-                  f"Updated '{state.card_title_f}'",
-                  severity=_priority_to_severity(state.card_priority_f))        # Write SESSION_ATTACHED only when session actually changed
-        if new_session_id and (not existing or existing.session_id != new_session_id):
-            # Prevent duplicate: check no other card already holds this session
+        old_session_id = existing.session_id if existing else None
+
+        store.update_card(
+            state.card_id_edit,
+            title=state.card_title_f,
+            description=state.card_desc_f,
+            status=state.card_status_f,
+            assignee=state.card_assign_f,
+            priority=state.card_priority_f,
+            labels=labels,
+            attestation=state.card_attest_f,
+            card_type=getattr(state, "card_type_f", "file"),
+            data_source=getattr(state, "card_source_f", ""),
+            session_id=new_session_id,
+        )
+
+        store.log_user_action(
+            "user",
+            "pipeline.update",
+            "card",
+            state.card_id_edit,
+            f"Updated '{state.card_title_f}'",
+            severity=_priority_to_severity(state.card_priority_f),
+        )
+
+        # Write session.attach only when session actually changed
+        if new_session_id and old_session_id != new_session_id:
             all_cards = store.list_cards()
             already = any(
                 c.id != state.card_id_edit and c.session_id == new_session_id
@@ -5036,22 +5765,57 @@ def on_card_save(state):
             if already:
                 notify(state, "warning", "That session is already attached to another card.")
                 return
-            store.log_user_action("user", "session.attach", "card", state.card_id_edit,
-                      f"Session {new_session_id} attached to '{state.card_title_f}'",
-                      severity=_priority_to_severity(state.card_priority_f))
+
+            store.log_user_action(
+                "user",
+                "session.attach",
+                "card",
+                state.card_id_edit,
+                f"Session {new_session_id} attached to '{state.card_title_f}'",
+                severity=_priority_to_severity(state.card_priority_f),
+            )
+            store.update_session(new_session_id, pipeline_card_id=state.card_id_edit)
+
         notify(state, "success", "Card updated.")
+
     else:
-        c = PipelineCard(title=state.card_title_f, description=state.card_desc_f,
-                         status=state.card_status_f, assignee=state.card_assign_f,
-                         priority=state.card_priority_f, labels=labels,
-                         attestation=state.card_attest_f,
-                         session_id=new_session_id)
+        c = PipelineCard(
+            title=state.card_title_f,
+            description=state.card_desc_f,
+            status=state.card_status_f,
+            assignee=state.card_assign_f,
+            priority=state.card_priority_f,
+            labels=labels,
+            attestation=state.card_attest_f,
+            card_type=getattr(state, "card_type_f", "file"),
+            data_source=getattr(state, "card_source_f", ""),
+            session_id=new_session_id,
+        )
+
         store.add_card(c)
+
+        store.log_user_action(
+            "user",
+            "CARD_CREATED",
+            "card",
+            c.id,
+            f"Created '{state.card_title_f}' in Intake",
+            severity=_priority_to_severity(state.card_priority_f),
+        )
+
         if new_session_id:
-            store.log_user_action("user", "session.attach", "card", c.id,
-                      f"Session {new_session_id} attached to '{state.card_title_f}'",
-                      severity=_priority_to_severity(state.card_priority_f))
+            store.log_user_action(
+                "user",
+                "session.attach",
+                "card",
+                c.id,
+                f"Session {new_session_id} attached to '{state.card_title_f}'",
+                severity=_priority_to_severity(state.card_priority_f),
+            )
+            store.update_session(new_session_id, pipeline_card_id=c.id)
+
         notify(state, "success", f"Card '{state.card_title_f}' created.")
+
     state.card_form_open = False
     _refresh_pipeline(state)
     _refresh_audit(state)
@@ -5063,6 +5827,8 @@ def on_card_cancel(state):
 
 
 def on_card_edit(state):
+    if not _require_action_role(state, "card_manage", "Pipeline editing"):
+        return
     cid = _get_selected_card_id(state)
     if not cid:
         notify(state, "warning", "Select a card first."); return
@@ -5073,6 +5839,8 @@ def on_card_edit(state):
     state.card_desc_f    = c.description
     state.card_status_f  = c.status; state.card_assign_f  = c.assignee
     state.card_priority_f = c.priority
+    state.card_type_f    = c.card_type or "file"
+    state.card_source_f  = c.data_source or ""
     state.card_labels_f  = ", ".join(c.labels)
     state.card_attest_f  = c.attestation
     sessions = store.list_sessions()
@@ -5088,6 +5856,8 @@ def on_card_edit(state):
 
 
 def on_card_forward(state):
+    if not _require_action_role(state, "card_manage", "Pipeline editing"):
+        return
     cid = _get_selected_card_id(state)
     if not cid:
         notify(state, "warning", "Select a card."); return
@@ -5108,6 +5878,8 @@ def on_card_forward(state):
 
 
 def on_card_back(state):
+    if not _require_action_role(state, "card_manage", "Pipeline editing"):
+        return
     cid = _get_selected_card_id(state)
     if not cid:
         notify(state, "warning", "Select a card."); return
@@ -5128,6 +5900,8 @@ def on_card_back(state):
 
 
 def on_card_delete(state):
+    if not _require_action_role(state, "card_manage", "Pipeline editing"):
+        return
     cid = _get_selected_card_id(state)
     if not cid:
         notify(state, "warning", "Select a card."); return
@@ -5135,16 +5909,19 @@ def on_card_delete(state):
     _clear_selected_card(state, clear_selection_vars=True)
     notify(state, "success", "Card deleted.")
     _refresh_pipeline(state); _refresh_audit(state); _refresh_dashboard(state)
-
-
 def on_attest_open(state):
+    if not _require_action_role(state, "card_attest", "Compliance attestation"):
+        return
+
     cid = _get_selected_card_id(state)
     if not cid:
-        notify(state, "warning", "Select a card."); return
-    state.attest_cid = cid
-    state.attest_note = ""; state.attest_by = ""
-    state.attest_open = True
+        notify(state, "warning", "Select a card.")
+        return
 
+    state.attest_cid = cid
+    state.attest_note = ""
+    state.attest_by = ""
+    state.attest_open = True
 
 def on_attest_confirm(state):
     if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
@@ -5158,6 +5935,8 @@ def on_attest_confirm(state):
                "Authorization denied: you do not have the 'reviewer' or "
                "'compliance_officer' role on this card."); return
 
+    if not state.attest_by.strip():
+        notify(state, "error", "Name required."); return
     card = store.get_card(state.attest_cid)
     if not card:
         notify(state, "error", "Card not found."); return
@@ -5220,6 +5999,31 @@ def on_card_history(state):
         rows or [{"Time": "—", "Action": "No history yet", "Actor": "", "Details": ""}],
         columns=["Time", "Action", "Actor", "Details"],
     )
+    linked_sessions = store.list_sessions_by_card(cid)
+    # Also include session attached via card.session_id (manual attachment)
+    card = store.get_card(cid)
+    if card and card.session_id:
+        linked_ids = {s.id for s in linked_sessions}
+        if card.session_id not in linked_ids:
+            extra = store.get_session(card.session_id)
+            if extra:
+                linked_sessions.insert(0, extra)
+    session_rows = [
+        {
+            "ID": s.id[:8],
+            "Title": s.title[:50],
+            "Operator": s.operator,
+            "Entities": sum(s.entity_counts.values()) if s.entity_counts else 0,
+            "Source": s.source_type,
+            "Created": s.created_at[5:16].replace("T", " "),
+        }
+        for s in linked_sessions
+    ]
+    state.card_sessions_data = pd.DataFrame(
+        session_rows or [{"ID": "—", "Title": "No sessions linked", "Operator": "",
+                          "Entities": 0, "Source": "", "Created": ""}],
+        columns=["ID", "Title", "Operator", "Entities", "Source", "Created"],
+    )
     state.card_audit_open = True
 
 
@@ -5229,6 +6033,8 @@ def on_card_history_close(state):
 
 # ── Schedule ──────────────────────────────────────────────────────────────────
 def on_appt_new(state):
+    if not _require_action_role(state, "appointment_manage", "Review scheduling"):
+        return
     state.appt_id_edit = ""; state.appt_title_f = "PII Review"
     state.appt_desc_f  = ""; state.appt_date_f  = None
     state.appt_time_f  = "10:00"; state.appt_dur_f = 30
@@ -5238,6 +6044,8 @@ def on_appt_new(state):
 
 
 def on_appt_save(state):
+    if not _require_action_role(state, "appointment_manage", "Review scheduling"):
+        return
     if not state.appt_title_f.strip():
         notify(state, "error", "Title required."); return
     if not state.appt_date_f:
@@ -5278,6 +6086,8 @@ def on_appt_select(state, var_name, value):
 
 
 def on_appt_edit(state):
+    if not _require_action_role(state, "appointment_manage", "Review scheduling"):
+        return
     aid = state.sel_appt_id
     if not aid:
         notify(state, "warning", "Select an appointment."); return
@@ -5300,6 +6110,8 @@ def on_appt_edit(state):
 
 
 def on_appt_delete(state):
+    if not _require_action_role(state, "appointment_manage", "Review scheduling"):
+        return
     aid = state.sel_appt_id
     if not aid:
         notify(state, "warning", "Select an appointment."); return
@@ -5334,12 +6146,29 @@ def on_export_audit_csv(state):
     if isinstance(df, pd.DataFrame) and not df.empty:
         csv_bytes = df.to_csv(index=False).encode()
         download(state, content=csv_bytes, name="audit_log.csv")
-        store.log_user_action(
-            "system", "audit.export", "audit_log", "csv",
-            f"Exported {len(df)} audit entries as CSV", "info"
-        )
-    else:
-        notify(state, "warning", "No audit entries to export.")
+        notify(state, "success", f"Exported {len(df)} audit entries as CSV.")
+
+
+def on_audit_export_csv(state):
+    """Export the full audit log as a CSV download."""
+    if not _require_action_role(state, "audit_export", "Audit export"):
+        return
+    try:
+        entries = store.list_audit()
+        if not entries:
+            notify(state, "warning", "No audit entries to export.")
+            return
+        rows = [dataclasses.asdict(e) for e in entries]
+        df = pd.DataFrame(rows)
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        download(state, content=csv_bytes, name="audit_log.csv")
+        store.log_user_action("user", "audit.export", "audit", "",
+                              f"Exported {len(entries)} audit entries as CSV")
+        _refresh_audit(state)
+        notify(state, "success", f"Exported {len(entries)} audit entries as CSV.")
+    except Exception as e:
+        _log.exception("audit_export_csv_error")
+        notify(state, "error", "Failed to export audit log.")
 
 
 def on_export_audit_json(state):
@@ -5360,29 +6189,72 @@ def on_export_audit_json(state):
         records = df.to_dict(orient="records")
         json_bytes = json.dumps(records, indent=2, default=str).encode()
         download(state, content=json_bytes, name="audit_log.json")
-        store.log_user_action(
-            "system", "audit.export", "audit_log", "json",
-            f"Exported {len(df)} audit entries as JSON", "info"
-        )
-    else:
-        notify(state, "warning", "No audit entries to export.")
+        notify(state, "success", f"Exported {len(df)} audit entries as JSON.")
 
 
-# ── Telemetry ─────────────────────────────────────────────────────────────────
-def on_refresh_telemetry(state):
-    """Refresh telemetry KPIs, charts, and event log."""
-    _refresh_telemetry(state)
-    notify(state, "info", "Telemetry refreshed.")
+def on_audit_export_json(state):
+    """Export the full audit log as a JSON download."""
+    if not _require_action_role(state, "audit_export", "Audit export"):
+        return
+    try:
+        entries = store.list_audit()
+        if not entries:
+            notify(state, "warning", "No audit entries to export.")
+            return
+        rows = [dataclasses.asdict(e) for e in entries]
+        json_bytes = json.dumps(rows, indent=2, default=str).encode("utf-8")
+        download(state, content=json_bytes, name="audit_log.json")
+        store.log_user_action("user", "audit.export", "audit", "",
+                              f"Exported {len(entries)} audit entries as JSON")
+        _refresh_audit(state)
+        notify(state, "success", f"Exported {len(entries)} audit entries as JSON.")
+    except Exception as e:
+        _log.exception("audit_export_json_error")
+        notify(state, "error", "Failed to export audit log.")
 
 
-def on_export_telemetry_csv(state):
-    """Download the recent event log as a CSV file."""
-    df = state.telemetry_event_table
-    if isinstance(df, pd.DataFrame) and not df.empty:
-        csv_bytes = df.to_csv(index=False).encode()
-        download(state, content=csv_bytes, name="telemetry_events.csv")
-    else:
-        notify(state, "warning", "No telemetry events to export.")
+def on_pipeline_export_csv(state):
+    """Export all pipeline cards as a CSV download."""
+    if not _require_action_role(state, "pipeline_export", "Pipeline export"):
+        return
+    try:
+        cards = store.list_cards()
+        if not cards:
+            notify(state, "warning", "No pipeline cards to export.")
+            return
+        rows = [dataclasses.asdict(c) for c in cards]
+        df = pd.DataFrame(rows)
+        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        download(state, content=csv_bytes, name="pipeline_cards.csv")
+        store.log_user_action("user", "pipeline.export", "pipeline", "",
+                              f"Exported {len(cards)} pipeline cards as CSV")
+        _refresh_audit(state)
+        notify(state, "success", f"Exported {len(cards)} pipeline cards as CSV.")
+    except Exception as e:
+        _log.exception("pipeline_export_csv_error")
+        notify(state, "error", "Failed to export pipeline cards.")
+
+
+def on_pipeline_export_json(state):
+    """Export all pipeline cards as a JSON download."""
+    if not _require_action_role(state, "pipeline_export", "Pipeline export"):
+        return
+    try:
+        cards = store.list_cards()
+        if not cards:
+            notify(state, "warning", "No pipeline cards to export.")
+            return
+        rows = [dataclasses.asdict(c) for c in cards]
+        json_bytes = json.dumps(rows, indent=2, default=str).encode("utf-8")
+        download(state, content=json_bytes, name="pipeline_cards.json")
+        store.log_user_action("user", "pipeline.export", "pipeline", "",
+                              f"Exported {len(cards)} pipeline cards as JSON")
+        _refresh_audit(state)
+        notify(state, "success", f"Exported {len(cards)} pipeline cards as JSON.")
+    except Exception as e:
+        _log.exception("pipeline_export_json_error")
+        notify(state, "error", "Failed to export pipeline cards.")
+
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -5600,6 +6472,8 @@ def _seed_demo_texts():
 
 def on_dash_seed_demo(state):
     """Seed one deterministic session so empty dashboard charts populate instantly."""
+    if not _require_action_role(state, "demo_seed", "Demo data generation"):
+        return
     state.qt_input = (
         "Patient: Jane Doe, DOB: 03/15/1982\n"
         "SSN: 987-65-4321 | Email: jane.doe@hospital.org\n"
@@ -5801,6 +6675,71 @@ def run_app():
             except Exception:
                 pass
         _stop_live_dashboard_thread()
+
+def demo_authz(user, action):
+    if user == "admin":
+        return "ALLOW"
+    elif user == "guest" and action == "read":
+        return "ALLOW"
+    else:
+        return "DENY"
+
+
+print("Admin trying delete:", demo_authz("admin", "delete"))
+print("Guest trying read:", demo_authz("guest", "read"))
+print("Guest trying delete:", demo_authz("guest", "delete"))
+
+authz_results = [
+    "Admin trying delete: " + demo_authz("admin", "delete"),
+    "Guest trying read: " + demo_authz("guest", "read"),
+    "Guest trying delete: " + demo_authz("guest", "delete"),
+]
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI( )
+
+class TextRequest(BaseModel):
+    text: str
+
+@app.post("/detect-pii")
+def detect_pii(data: TextRequest):
+    text = data.text
+
+    if "@" in text:
+        return {"message": "Possible email detected", "input": text}
+
+    return {"message": "No PII detected", "input": text}
+
+@app.get("/pipeline-cards")
+def get_pipeline_cards():
+    return {"message": "Pipeline cards endpoint working"}
+
+pipeline_cards = []
+
+class PipelineCard(BaseModel):
+    name: str
+    status: str
+
+@app.post("/pipeline-cards")
+def create_pipeline_card(card: PipelineCard):
+    pipeline_cards.append(card)
+    return {"message": "Pipeline card created", "card": card}
+
+@app.put("/pipeline-cards/{index}")
+def update_pipeline_card(index: int, card: PipelineCard):
+    if index < len(pipeline_cards):
+        pipeline_cards[index] = card
+        return {"message": "Pipeline card updated", "card": card}
+    return {"error": "Card not found"}
+
+@app.delete("/pipeline-cards/{index}")
+def delete_pipeline_card(index: int):
+    if index < len(pipeline_cards):
+        deleted_card = pipeline_cards.pop(index)
+        return {"message": "Pipeline card deleted", "card": deleted_card}
+    return {"error": "Card not found"}
 
 
 if __name__ == "__main__":

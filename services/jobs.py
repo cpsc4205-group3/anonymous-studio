@@ -68,6 +68,7 @@ def stage_csv_upload_for_job(job_id: str, file_name: str, raw_bytes: bytes) -> s
         "anon_studio_uploads",
     )
     os.makedirs(root, mode=0o700, exist_ok=True)
+
     path = os.path.join(root, f"{job_id}_{safe_name}")
     with open(path, "wb") as out:
         out.write(raw_bytes)
@@ -197,6 +198,17 @@ def build_entity_stats_df(stats_data: Optional[Dict[str, Any]]) -> pd.DataFrame:
         for key, value in (stats_data or {}).get("entity_counts", {}).items()
     ]
     return pd.DataFrame(rows, columns=["Entity Type", "Count"])
+
+
+def build_sample_df(records: Any) -> pd.DataFrame:
+    """Convert a list-of-dicts sample (sample_before / sample_after from job_stats)
+    into a DataFrame suitable for display.  Returns an empty DataFrame on bad input."""
+    if not records or not isinstance(records, list):
+        return pd.DataFrame()
+    try:
+        return pd.DataFrame(records).fillna("")
+    except (ValueError, TypeError, KeyError):
+        return pd.DataFrame()
 
 
 def latest_cancellable_job(jobs: Iterable[Any]) -> Optional[Any]:

@@ -1847,6 +1847,30 @@ body,
 
 .dash-alerts-body strong {
   color: var(--text-primary) !important;
+
+/* ── Taipy Metric Components ─────────────────────────────────────────────── */
+/* Override default MUI blue (#1976d2) on the progress bar fill */
+.taipy-metric .MuiLinearProgress-root {
+  background-color: var(--bdr) !important;
+  border-radius: 1px;
+}
+
+.taipy-metric .MuiLinearProgress-bar,
+.taipy-metric .MuiLinearProgress-barColorPrimary,
+.taipy-metric .MuiLinearProgress-bar1Linear {
+  background-color: var(--acc) !important;
+}
+
+/* Override delta value colors — MUI colorPrimary defaults to blue */
+.taipy-metric .MuiTypography-colorPrimary,
+.taipy-metric .MuiTypography-root[class*="colorPrimary"] {
+  color: var(--grn) !important;
+}
+
+.taipy-metric .MuiTypography-colorError,
+.taipy-metric .MuiTypography-root[class*="colorError"] {
+  color: var(--red) !important;
+
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

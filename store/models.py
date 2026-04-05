@@ -90,6 +90,8 @@ class PipelineCard:
     title: str                   = "New Task"
     description: str             = ""
     status: str                  = "backlog"   # backlog|in_progress|review|done
+    card_type: str               = "file"      # file|text|database|api
+    data_source: str             = ""          # free-text description of the data origin
     assignee: str                = ""
     priority: str                = "medium"    # low|medium|high|critical
     labels: List[str]            = field(default_factory=list)
@@ -155,3 +157,17 @@ class AuditEntry:
     resource_id: str   = ""
     details: str       = ""
     severity: str      = "info"  # info | warning | critical
+
+@dataclass
+class UserAccount:
+    """Application user record for local email/password authentication."""
+
+    id: str                      = field(default_factory=_uid)
+    email: str                   = ""
+    password_hash: str           = ""
+    role: str                    = "Researcher"
+    full_name: str               = ""
+    is_active: bool              = True
+    created_at: str              = field(default_factory=_now)
+    updated_at: str              = field(default_factory=_now)
+    last_login_at: Optional[str] = None
