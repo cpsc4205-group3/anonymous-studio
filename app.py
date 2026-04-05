@@ -3936,7 +3936,7 @@ def on_init(state):
         _set_qt_entity_state(state, ents)
     except Exception:
         pass
-    scheduler.sync(store.list_appointment())
+    scheduler.sync(store.list_appointments())
     scheduler.start()
     navigate(state, "auth")
 
