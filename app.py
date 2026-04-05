@@ -5244,7 +5244,7 @@ def on_submit_job(state):
         if not tp.is_orchestrator_running():
             notify(state, "warning", "Taipy Orchestrator is not running — job will queue but not execute until it starts.")
     except Exception:
-        pass
+        _log.exception("Failed to check Taipy Orchestrator status")
 
     try:
         result = _bg_submit_job(raw_input_payload, config)
