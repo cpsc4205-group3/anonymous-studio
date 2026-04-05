@@ -2855,7 +2855,7 @@ def _refresh_dashboard(state):
             }
         )
         state.dash_perf_figure = perf_fig
-        state.perf_telemetry_table = pd.DataFrame({"Session": raw_labels, "ms": values})
+        state.perf_telemetry_table = pd.DataFrame({"Session": raw_titles, "ms": values})
         state.dash_perf_visible = True
     else:
         state.dash_perf_avg_ms   = 0.0
