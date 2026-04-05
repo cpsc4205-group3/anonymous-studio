@@ -4,6 +4,8 @@ Run with:
   taipy run rest_main.py
 """
 
+import os
+
 from dotenv import load_dotenv
 
 # Load .env before any project module so env-var-gated config (core_config,
@@ -21,7 +23,17 @@ from services.auth0_rest import maybe_enable_auth0_rest_auth  # noqa: E402
 def run_rest():
     rest_service = Rest()
     maybe_enable_auth0_rest_auth(rest_service._app)
-    tp.run(rest_service)
+    run_kwargs = {}
+    taipy_host = os.environ.get("TAIPY_HOST", "").strip()
+    taipy_port = (os.environ.get("TAIPY_PORT", "") or os.environ.get("PORT", "")).strip()
+    if taipy_host:
+        run_kwargs["host"] = taipy_host
+    if taipy_port:
+        try:
+            run_kwargs["port"] = int(taipy_port)
+        except ValueError:
+            pass
+    tp.run(rest_service, **run_kwargs)
 
 
 if __name__ == "__main__":

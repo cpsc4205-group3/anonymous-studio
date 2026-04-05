@@ -433,12 +433,18 @@ def test_on_export_audit_csv_downloads_csv_file(monkeypatch):
         {"Time": "12:00:00", "Actor": "user1", "Action": "login", "Resource": "auth/session", "Details": "Logged in", "Severity": "info"},
         {"Time": "12:05:00", "Actor": "user2", "Action": "create", "Resource": "pipeline/card-1", "Details": "Created card", "Severity": "info"},
     ])
-    state = SimpleNamespace(audit_table=audit_df)
+    state = SimpleNamespace(
+        audit_table=audit_df,
+        gui_auth_source="proxy",
+        gui_user="admin",
+        gui_user_email="admin@example.com",
+    )
     captured = {}
 
     monkeypatch.setattr(app, "download", lambda _state, content, name: captured.update({"content": content, "name": name}))
     monkeypatch.setattr(app.store, "log_user_action", lambda *args, **kwargs: None)
     monkeypatch.setattr(app, "notify", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app, "authz_check", lambda *args, **kwargs: True)
 
     app.on_export_audit_csv(state)
 
@@ -450,11 +456,17 @@ def test_on_export_audit_csv_downloads_csv_file(monkeypatch):
 
 def test_on_export_audit_csv_warns_on_empty_table(monkeypatch):
     """Test that exporting an empty audit table shows a warning."""
-    state = SimpleNamespace(audit_table=pd.DataFrame())
+    state = SimpleNamespace(
+        audit_table=pd.DataFrame(),
+        gui_auth_source="proxy",
+        gui_user="admin",
+        gui_user_email="admin@example.com",
+    )
     captured_notify = []
 
     monkeypatch.setattr(app, "download", lambda _state, content, name: None)
     monkeypatch.setattr(app, "notify", lambda _state, level, msg: captured_notify.append((level, msg)))
+    monkeypatch.setattr(app, "authz_check", lambda *args, **kwargs: True)
 
     app.on_export_audit_csv(state)
 
@@ -467,12 +479,18 @@ def test_on_export_audit_json_downloads_json_file(monkeypatch):
     audit_df = pd.DataFrame([
         {"Time": "12:00:00", "Actor": "admin", "Action": "delete", "Resource": "card/123", "Details": "Deleted card", "Severity": "warning"},
     ])
-    state = SimpleNamespace(audit_table=audit_df)
+    state = SimpleNamespace(
+        audit_table=audit_df,
+        gui_auth_source="proxy",
+        gui_user="admin",
+        gui_user_email="admin@example.com",
+    )
     captured = {}
 
     monkeypatch.setattr(app, "download", lambda _state, content, name: captured.update({"content": content, "name": name}))
     monkeypatch.setattr(app.store, "log_user_action", lambda *args, **kwargs: None)
     monkeypatch.setattr(app, "notify", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app, "authz_check", lambda *args, **kwargs: True)
 
     app.on_export_audit_json(state)
 
@@ -485,11 +503,17 @@ def test_on_export_audit_json_downloads_json_file(monkeypatch):
 
 def test_on_export_audit_json_warns_on_empty_table(monkeypatch):
     """Test that exporting an empty audit table as JSON shows a warning."""
-    state = SimpleNamespace(audit_table=pd.DataFrame())
+    state = SimpleNamespace(
+        audit_table=pd.DataFrame(),
+        gui_auth_source="proxy",
+        gui_user="admin",
+        gui_user_email="admin@example.com",
+    )
     captured_notify = []
 
     monkeypatch.setattr(app, "download", lambda _state, content, name: None)
     monkeypatch.setattr(app, "notify", lambda _state, level, msg: captured_notify.append((level, msg)))
+    monkeypatch.setattr(app, "authz_check", lambda *args, **kwargs: True)
 
     app.on_export_audit_json(state)
 

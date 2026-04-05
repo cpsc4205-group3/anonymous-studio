@@ -102,6 +102,8 @@ from services.attestation_crypto import (
     sign_attestation_payload,
     signature_required,
 )
+from services.auth_identity import bind_identity_from_request_headers
+from services.authz import authz_check, principal_for
 from services.telemetry import (
     record_job_completion,
     get_telemetry_snapshot,
@@ -176,8 +178,60 @@ def _drunken_bishop(hex_str: str, label: str = "") -> str:
     return "\n".join(rows)
 
 
+_PERSP_CDN = "https://cdn.jsdelivr.net/npm/@finos/perspective-viewer@3/dist/cdn"
+_PERSP_PSP = "https://cdn.jsdelivr.net/npm/@finos/perspective@3/dist/cdn"
+
+
+def _build_perspective_html(df: "pd.DataFrame") -> str:
+    """Return an iframe-srcdoc Perspective viewer for the given DataFrame (≤5000 rows)."""
+    import html as _esc
+    import json
+    import math
+
+    preview = df.head(5_000)
+
+    def _clean(v):
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return None
+        return v
+
+    rows = [{k: _clean(v) for k, v in row.items()} for row in preview.to_dict(orient="records")]
+    data_js = json.dumps(rows)
+    n_rows = len(rows)
+    n_cols = len(preview.columns)
+
+    inner = f"""<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="{_PERSP_CDN}/themes/pro-dark.css">
+  <style>
+    html,body{{margin:0;padding:0;height:100%;background:#0b0c0f;overflow:hidden;}}
+    perspective-viewer{{width:100%;height:100%;display:block;}}
+  </style>
+  <script type="module">
+    import perspective from "{_PERSP_PSP}/perspective.js";
+    import "{_PERSP_CDN}/perspective-viewer.js";
+    import "{_PERSP_CDN}/perspective-viewer-datagrid.js";
+    import "{_PERSP_CDN}/perspective-viewer-d3fc.js";
+    const worker = await perspective.worker();
+    const table  = await worker.table({data_js});
+    const viewer = document.querySelector("perspective-viewer");
+    await viewer.load(table);
+    await viewer.restore({{plugin:"Datagrid",theme:"Pro Dark"}});
+  </script>
+</head><body>
+  <perspective-viewer></perspective-viewer>
+</body></html>"""
+
+    srcdoc = _esc.escape(inner, quote=True)
+    note = f"{n_rows:,} rows · {n_cols} cols · first 5 000 shown" if len(df) > n_rows else f"{n_rows:,} rows · {n_cols} cols"
+    return (
+        f'<div style="font-size:11px;color:#4d5873;margin-bottom:6px;">{note}</div>'
+        f'<iframe srcdoc="{srcdoc}" style="width:100%;height:620px;border:none;border-radius:2px;" loading="lazy"></iframe>'
+    )
+
+
 def _store_status_ui(status_text: str) -> tuple[str, str]:
-    """Return compact store label plus full hover tooltip text."""
     raw = str(status_text or "").strip()
     lower = raw.lower()
     if lower.startswith("mongodb"):
@@ -374,6 +428,10 @@ qt_has_entities    = False
 qt_settings_open   = False
 qt_allowlist_text  = ""   # comma-separated words to never flag as PII
 qt_denylist_text   = ""   # comma-separated words to always flag as PII
+qt_show_rationale  = True  # whether to include Recognizer column in entity table
+QT_COLUMNS_FULL    = "Entity Type;Text;Confidence;Confidence Band;Span;Recognizer"
+QT_COLUMNS_SHORT   = "Entity Type;Text;Confidence;Span"
+qt_entity_columns  = QT_COLUMNS_FULL  # dynamically updated by on_qt_show_rationale_change
 qt_ner_model_lov   = [
     "spaCy/en_core_web_lg",
     "flair/ner-english-large",
@@ -442,6 +500,10 @@ download_ready       = False
 download_scenario_id = ""
 download_rows        = 0
 download_cols        = 0
+
+# Perspective viewer (CDN iframe)
+persp_html  = ""
+persp_ready = False
 
 # Preview table (first 50 rows of result)
 preview_data       = pd.DataFrame()
@@ -634,7 +696,13 @@ card_session_opts: List[str] = ["(none)"]  # populated on form open
 attest_open   = False
 attest_cid    = ""
 attest_note   = ""
-attest_by     = ""
+attest_by     = ""   # legacy — kept for Taipy state binding only; not used in attestation logic
+# Authenticated GUI identity — populated in on_init from trusted proxy headers
+gui_user        = ""
+gui_user_email  = ""
+gui_user_groups = ""
+gui_auth_identity = ""
+gui_auth_source = "unauthenticated"  # "proxy" | "break_glass" | "unauthenticated"
 
 # Per-card audit history dialog
 card_audit_open = False
@@ -710,6 +778,7 @@ dash_report_summary_md = ""
 dash_kpi_entities_total = 0
 dash_kpi_entities_total_label = "0"
 dash_kpi_reviews_scheduled = 0
+dash_kpi_sessions_total    = 0
 dash_audit_chart = pd.DataFrame(columns=["Severity", "Count"])
 dash_priority_chart = pd.DataFrame(columns=["Priority", "Count"])
 dash_ops_trend = pd.DataFrame(columns=["Date", "Entities", "Sessions"])
@@ -728,6 +797,7 @@ dash_svc_health_md = ""
 # Numeric types are required by the native Taipy metric / indicator widgets.
 dash_perf_visible        = False
 dash_perf_avg_ms         = 0.0    # <|...|metric|> — avg processing latency
+dash_perf_peak_ms        = 0.0    # <|...|metric|> — peak (max) processing latency
 dash_perf_max_ms         = 50.0   # gauge upper bound, updated to 120 % of peak
 dash_perf_delta_ms       = 0.0    # latest session vs avg — negative = faster
 dash_perf_count          = 0      # <|...|metric|> — total timed sessions
@@ -2034,7 +2104,8 @@ def _refresh_dashboard(state):
     _dash_sessions = _cached_sessions()   # hoist — reused by entity chart, trend, perf panel
     state.dash_cards_total    = sum(st["pipeline_by_status"].values())
     state.dash_cards_attested = st["attested_cards"]
-    state.dash_kpi_entities_total = st.get("total_entities_redacted", 0)
+    state.dash_kpi_entities_total  = st.get("total_entities_redacted", 0)
+    state.dash_kpi_sessions_total  = len(_dash_sessions)
     _dash_appointments = store.list_appointments()  # hoist — reused for KPI, upcoming, alerts
     _now_iso = _now()
     state.dash_kpi_reviews_scheduled = sum(
@@ -2426,37 +2497,60 @@ def _refresh_dashboard(state):
         state.dash_perf_count    = len(timing_ms)
         state.dash_perf_max_ms   = max(50.0, round(max(timing_ms) * 1.2, 0))
 
-        # Bar chart — last 12 sessions, processing time per session
-        recent   = timing_sessions[-12:]
-        labels   = [getattr(s, "title", s.id[:8]) for s in recent]
-        values   = [round(s.processing_ms, 1) for s in recent]
+        # Horizontal bar chart — last 12 sessions, most recent at top
+        recent     = timing_sessions[-12:]
+        raw_titles = [getattr(s, "title", s.id[:8]) for s in recent]
+        values     = [round(s.processing_ms, 1) for s in recent]
+        # Truncate long session titles for display; full title surfaced in hover
+        labels = [t[:18] + "…" if len(t) > 18 else t for t in raw_titles]
+        hovers = [f"<b>{t}</b><br>{v} ms" for t, v in zip(raw_titles, values)]
         # Colour each bar by speed: green (<50ms), amber (<200ms), red (≥200ms)
         bar_colors = [
-            "#22C55E" if v < 50 else "#F59E0B" if v < 200 else "#FF2B2B"
+            "#22C55E" if v < 50 else "#F59E0B" if v < 200 else "#EF4444"
             for v in values
         ]
+        peak_ms = max(timing_ms)
+        state.dash_perf_peak_ms = round(peak_ms, 1)
         perf_fig = go.Figure(go.Bar(
-            x=labels, y=values,
-            marker=dict(color=bar_colors),
+            y=labels, x=values,
+            orientation="h",
+            marker=dict(color=bar_colors, opacity=0.88),
             text=[f"{v} ms" for v in values],
             textposition="outside",
             cliponaxis=False,
-            hovertemplate="%{x}<br>%{y} ms<extra></extra>",
+            customdata=hovers,
+            hovertemplate="%{customdata}<extra></extra>",
         ))
         perf_fig.update_layout(
             **{
                 **chart_layout,
-                "margin": {"t": 28, "b": 90, "l": 50, "r": 16},
+                "margin": {"t": 28, "b": 32, "l": 10, "r": 60},
                 "xaxis": {
                     **chart_layout["xaxis"],
-                    "tickangle": -35,
-                    "tickfont": {"size": 10},
+                    "title": "milliseconds",
+                    "rangemode": "tozero",
                 },
                 "yaxis": {
                     **chart_layout["yaxis"],
-                    "title": "ms",
-                    "rangemode": "tozero",
+                    "automargin": True,
+                    "tickfont": {"size": 10},
+                    "showgrid": False,
                 },
+                "shapes": [{
+                    "type": "line",
+                    "x0": avg_ms, "x1": avg_ms,
+                    "y0": -0.5,   "y1": len(recent) - 0.5,
+                    "line": {"color": "#F59E0B", "width": 1.5, "dash": "dot"},
+                }],
+                "annotations": [{
+                    "x": avg_ms, "y": len(recent) - 0.5,
+                    "text": f"avg {avg_ms:.0f} ms",
+                    "showarrow": False,
+                    "font": {"color": "#F59E0B", "size": 9},
+                    "xanchor": "left",
+                    "yanchor": "bottom",
+                    "xshift": 4,
+                }],
                 "showlegend": False,
             }
         )
@@ -3351,6 +3445,30 @@ def _set_qt_entity_state(state, entities: List[Dict[str, Any]]) -> Counter:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def on_init(state):
+    # ── Bind authenticated identity from trusted proxy headers ───────────────
+    # on_init fires inside a Flask HTTP request context (registered as a Flask
+    # URL rule at /taipy-init). flask.request.headers is fully accessible here.
+    # Runtime-verified 2026-03-22: headers present → values read; headers
+    # absent → .get() returns ""; exception path → graceful degradation.
+    try:
+        from flask import request as _freq
+        _identity = bind_identity_from_request_headers(
+            _freq.headers,
+            getattr(_freq, "remote_addr", "") or "",
+        )
+        state.gui_user = _identity.user
+        state.gui_user_email = _identity.email
+        state.gui_user_groups = _identity.groups
+        state.gui_auth_identity = _identity.email or _identity.user
+        state.gui_auth_source = _identity.auth_source
+    except Exception as _exc:
+        _log.warning("on_init: could not read proxy identity headers: %s", _exc)
+        state.gui_user        = ""
+        state.gui_user_email  = ""
+        state.gui_user_groups = ""
+        state.gui_auth_identity = ""
+        state.gui_auth_source = "unauthenticated"
+    # ── End identity binding ─────────────────────────────────────────────────
     _register_live_state(state)
     state.store_status = describe_store_backend()
     state.store_status_label, state.store_status_hover = _store_status_ui(state.store_status)
@@ -3974,6 +4092,12 @@ def on_qt_settings_close(state):
     state.qt_settings_open = False
 
 
+def on_qt_show_rationale_change(state, var_name=None, value=None):
+    """Toggle Recognizer/Rationale columns in the entity evidence table."""
+    enabled = bool(value if value is not None else state.qt_show_rationale)
+    state.qt_entity_columns = QT_COLUMNS_FULL if enabled else QT_COLUMNS_SHORT
+
+
 def on_store_settings_open(state):
     state.store_backend_sel = get_store_backend_mode()
     state.store_mongo_uri = os.environ.get("MONGODB_URI", "").strip()
@@ -4584,6 +4708,11 @@ def _load_job_results(state, jid: str):
             state.download_scenario_id = jid
             state.download_rows        = len(anon_df)
             state.download_cols        = len(anon_df.columns)
+            try:
+                state.persp_html  = _build_perspective_html(anon_df)
+                state.persp_ready = True
+            except Exception:
+                state.persp_ready = False
         # Move linked card to review
         for c in store.list_cards():
             if getattr(c, 'job_id', None) == jid and c.status == "in_progress":
@@ -4732,6 +4861,8 @@ def on_job_remove(state):
         state.preview_data = pd.DataFrame()
         state.stats_entity_rows = pd.DataFrame(columns=["Entity Type", "Count"])
         state.stats_entity_chart_figure = {}
+        state.persp_html  = ""
+        state.persp_ready = False
         store.log_user_action("user", "job.remove", "job", jid, "Removed completed job entities")
         _refresh_job_table(state)
         _refresh_dashboard(state)
@@ -5016,20 +5147,32 @@ def on_attest_open(state):
 
 
 def on_attest_confirm(state):
-    if not state.attest_by.strip():
-        notify(state, "error", "Name required."); return
+    if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
+        notify(state, "error",
+               "Attestation requires an authenticated session. "
+               "Sign in via the auth proxy or enable local break-glass access before attesting."); return
+
+    _principal = principal_for(state)
+    if not authz_check(_principal, "can_attest", "card", state.attest_cid):
+        notify(state, "error",
+               "Authorization denied: you do not have the 'reviewer' or "
+               "'compliance_officer' role on this card."); return
+
     card = store.get_card(state.attest_cid)
     if not card:
         notify(state, "error", "Card not found."); return
 
-    attested_by = state.attest_by.strip()
-    attested_at = _now()
+    attested_by      = state.gui_user_email or state.gui_user
+    attested_at      = _now()
     attestation_note = (state.attest_note or "").strip()
     payload = build_attestation_payload(
         card=card,
         attested_by=attested_by,
         attested_at=attested_at,
         attestation_note=attestation_note,
+        actor_sub=state.gui_user,
+        actor_name=state.gui_user,
+        actor_email=state.gui_user_email,
     )
     sig = sign_attestation_payload(payload)
     if signature_required() and not sig.signed:
@@ -5177,6 +5320,16 @@ def on_audit_clear(state):
 
 def on_export_audit_csv(state):
     """Download the current audit log as a CSV file."""
+    if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
+        notify(state, "error",
+               "Audit export requires an authenticated session. "
+               "Sign in via the auth proxy or enable local break-glass access first."); return
+    _principal = principal_for(state)
+    if not authz_check(_principal, "can_export", "audit_log", "global"):
+        notify(state, "error",
+               "Authorization denied: 'compliance_officer' or 'admin' role required "
+               "to export the audit log."); return
+
     df = state.audit_table
     if isinstance(df, pd.DataFrame) and not df.empty:
         csv_bytes = df.to_csv(index=False).encode()
@@ -5191,6 +5344,16 @@ def on_export_audit_csv(state):
 
 def on_export_audit_json(state):
     """Download the current audit log as a JSON file."""
+    if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
+        notify(state, "error",
+               "Audit export requires an authenticated session. "
+               "Sign in via the auth proxy or enable local break-glass access first."); return
+    _principal = principal_for(state)
+    if not authz_check(_principal, "can_export", "audit_log", "global"):
+        notify(state, "error",
+               "Authorization denied: 'compliance_officer' or 'admin' role required "
+               "to export the audit log."); return
+
     df = state.audit_table
     if isinstance(df, pd.DataFrame) and not df.empty:
         import json
@@ -5252,6 +5415,13 @@ def on_ui_demo_refresh(state):
 def on_dash_go_analyze(state):
     navigate(state, "analyze")
     _refresh_sessions(state)
+
+
+def on_logout(state, id=None, payload=None):
+    logout_url = (os.environ.get("ANON_LOGOUT_URL", "") or "").strip()
+    if not logout_url:
+        logout_url = "http://localhost:8088/oauth2/sign_out"
+    navigate(state, logout_url, tab="_self")
 
 
 def _demo_seed_fallback_entities(text: str) -> List[Dict[str, Any]]:
@@ -5581,6 +5751,7 @@ def run_app():
             # Increase the max_decode_packets to handle large state with many dataframes
             async_mode="threading",
             engineio_logger=False,
+            flask_cors=True,
         )
         
         # Patch engineio to increase packet limit before starting server

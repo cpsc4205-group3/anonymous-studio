@@ -362,6 +362,29 @@ TAIPY_PORT=5001 taipy run rest_main.py
 
 By default (`ANON_AUTH_ENABLED=0`), no token is required, which keeps local development flow unchanged.
 
+### Local GUI break-glass identity
+
+When the Auth0 proxy is unavailable during local development, you can inject a
+local GUI identity instead of leaving the app permanently unauthenticated:
+
+```bash
+ANON_MODE=development
+ANON_BREAK_GLASS_ENABLED=1
+ANON_BREAK_GLASS_USER=carley
+ANON_BREAK_GLASS_EMAIL=carley@example.com
+ANON_BREAK_GLASS_GROUPS=admin,compliance
+taipy run main.py
+```
+
+Safety rails:
+
+- disabled by default
+- honored only when `ANON_MODE=development`
+- honored only for loopback requests (`127.0.0.1` / `::1`)
+- surfaced in the UI as auth source `break_glass`
+
+Use it only for local/dev recovery when the auth proxy is down.
+
 ---
 
 ## Large Dataset + Mongo Runbook

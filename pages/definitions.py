@@ -100,6 +100,9 @@ def on_dash_go_analyze(state, *args, **kwargs):
 def on_dash_seed_demo(state, *args, **kwargs):
     return _dispatch_app_action(state, "on_dash_seed_demo", *args, **kwargs)
 
+def on_logout(state, *args, **kwargs):
+    return _dispatch_app_action(state, "on_logout", *args, **kwargs)
+
 def on_download(state, *args, **kwargs):
     return _dispatch_app_action(state, "on_download", *args, **kwargs)
 
@@ -199,6 +202,9 @@ def on_dash_filters_change(state, var_name, var_value):
 def on_qt_ner_model_change(state, var_name, var_value):
     return _dispatch_app_change(state, "on_qt_ner_model_change", var_name, var_value)
 
+def on_qt_show_rationale_change(state, var_name, var_value):
+    return _dispatch_app_change(state, "on_qt_show_rationale_change", var_name, var_value)
+
 def on_submission_status_change(state, var_name, var_value):
     return _dispatch_app_change(state, "on_submission_status_change", var_name, var_value)
 
@@ -213,7 +219,7 @@ DASH = """
 
 <|part|class_name=page-hd dash-hero|
 <|part|class_name=dash-hero-copy|
-<|Operations Command Center|text|class_name=dash-eyebrow|>
+<|De-IdOps|text|class_name=dash-eyebrow|>
 <|Dashboard|text|class_name=page-title dash-hero-title|>
 <|Live pipeline status, recent activity, and upcoming compliance reviews|text|class_name=page-sub dash-hero-sub|hover_text=Live pipeline status, recent activity, and upcoming compliance reviews|>
 |>
@@ -226,6 +232,7 @@ DASH = """
 <|part|class_name=dash-hero-actions|
 <|Refresh|button|on_action=on_refresh_dashboard|class_name=secondary|>
 <|Generate Demo Session|button|on_action=on_dash_seed_demo|>
+<|Logout|button|on_action=on_logout|class_name=secondary|>
 |>
 |>
 |>
@@ -266,6 +273,10 @@ DASH = """
 <|part|class_name=dash-ticker-item dash-ticker-green|
 <|{dash_cards_attested}|text|class_name=dash-ticker-value|>
 <|Attested|text|class_name=dash-ticker-label|>
+|>
+<|part|class_name=dash-ticker-item dash-ticker-blue|
+<|{dash_kpi_sessions_total}|text|class_name=dash-ticker-value|>
+<|Sessions Saved|text|class_name=dash-ticker-label|>
 |>
 |>
 
@@ -359,11 +370,12 @@ DASH = """
 
 <|part|render={dash_perf_visible}|class_name=settings-panel dash-panel dash-panel-neutral|
 <|Engine Performance|text|class_name=sh sh-top|>
-<|layout|columns=1 1|gap=16px|
+<|layout|columns=1 1 1|gap=16px|
 <|{dash_perf_avg_ms}|metric|title=Avg Latency|format=%.0f ms|delta={dash_perf_delta_ms}|delta_color=invert|type=none|>
+<|{dash_perf_peak_ms}|metric|title=Peak Latency|format=%.0f ms|type=none|>
 <|{dash_perf_count}|metric|title=Sessions Timed|format=%d|type=none|>
 |>
-<|{perf_telemetry_table}|chart|id=dash_perf_bar|type=plotly|figure={dash_perf_figure}|height=260px|>
+<|{perf_telemetry_table}|chart|id=dash_perf_bar|type=plotly|figure={dash_perf_figure}|height=320px|>
 |>
 <|part|render={not dash_perf_visible}|class_name=panel widget-empty dash-panel dash-panel-muted|
 <|Engine Performance|text|class_name=sh sh-top|>
@@ -438,7 +450,7 @@ JOBS = """
 <|{job_file_art}|text|mode=pre|class_name=file-hash-art|>
 |>
 <|layout|columns=1 1|gap=12px|
-<|{job_operator}|selector|lov={job_operator_list}|dropdown=True|label=Anonymization method|class_name=job-method-field|hover_text=replace: swap with [ENTITY]. redact: remove text. mask: obfuscate. hash: SHA-256 hash.|>
+<|{job_operator}|selector|lov={job_operator_list}|dropdown=True|class_name=job-method-field|hover_text=replace: swap with [ENTITY]. redact: remove text. mask: obfuscate. hash: SHA-256 hash.|>
 <|part|class_name=job-threshold-field|
 <|Min. confidence|text|class_name=slider-label|>
 <|{job_threshold}|slider|min=0.1|max=1.0|step=0.05|hover_text=Higher threshold is stricter and reduces false positives but may miss weak signals.|>
@@ -510,7 +522,7 @@ JOBS = """
 |>
 
 <|Operational Views|text|class_name=sh|>
-<|{job_view_tab}|selector|lov={job_view_tab_lov}|dropdown=True|label=View|>
+<|{job_view_tab}|selector|lov={job_view_tab_lov}|dropdown=True|>
 
 <|part|render={job_view_tab=="Results"}|class_name=panel|
 <|Results Summary|text|class_name=sh sh-top|>
@@ -526,6 +538,10 @@ JOBS = """
 |>
 <|Preview (first 50 rows)|text|class_name=sh|>
 <|{preview_data}|table|page_size=8|show_all=False|filter=True|sortable=True|>
+|>
+<|part|render={persp_ready}|
+<|Perspective Grid|text|class_name=sh sh-top|hover_text=Interactive pivot grid powered by Perspective — drag columns to group, filter, and chart|>
+<|{persp_html}|text|mode=html|>
 |>
 <|part|render={not download_ready}|
 <|Run a job to generate anonymized output and quality metrics.|text|class_name=inline-hint|>
@@ -684,10 +700,20 @@ Done <|{kanban_done_len}|text|class_name=kh-cnt|>
 
 <|{attest_open}|dialog|title=Compliance Attestation|on_action=on_attest_cancel|width=480px|
 <|This statement is permanently logged to the immutable audit trail.|text|class_name=audit-stmt|>
-<|{attest_by}|input|label=Attested By *|class_name=fullwidth|>
+<|part|render={gui_auth_source!="unauthenticated"}|
+<|Attesting as|text|class_name=slider-label|>
+<|{gui_user_email}|text|class_name=inline-hint|>
+<|part|render={gui_auth_source=="break_glass"}|
+<|Local break-glass session active. Disable it after testing.|text|class_name=color-warning|>
+|>
 <|{attest_note}|input|multiline=True|lines_shown=3|label=Statement|class_name=fullwidth|>
 <|layout|columns=1 1|gap=8px|
 <|Confirm|button|on_action=on_attest_confirm|>
+<|Cancel|button|on_action=on_attest_cancel|class_name=secondary|>
+|>
+|>
+<|part|render={gui_auth_source=="unauthenticated"}|
+<|Attestation unavailable — sign in via the auth proxy or enable local break-glass access first.|text|class_name=color-error|>
 <|Cancel|button|on_action=on_attest_cancel|class_name=secondary|>
 |>
 |>
@@ -817,7 +843,9 @@ QT = """
 
 <|part|class_name=panel|
 <|1. Input and Run|text|class_name=sh sh-top|>
-<|{qt_input}|input|multiline=True|lines_shown=10|label=Input text|class_name=fullwidth|>
+<|{qt_input}|input|multiline=True|lines_shown=10|class_name=fullwidth|>
+
+<|{qt_operator}|selector|lov={qt_operator_list}|dropdown=True|label=De-identification method|class_name=fullwidth|hover_text=Presidio operators: replace (default), redact, mask, hash, or synthesize (LLM/Faker).|>
 
 <|part|class_name=qt-actions|
 <|Detect PII|button|on_action=on_qt_analyze|>
@@ -876,7 +904,7 @@ QT = """
 
 <|part|class_name=panel entity-evidence-panel|
 <|3. Entity Evidence|text|class_name=sh sh-top|>
-<|{qt_entity_rows}|table|columns=Entity Type;Text;Confidence;Confidence Band;Span;Recognizer|show_all=False|page_size=8|filter=True|sortable=True|>
+<|{qt_entity_rows}|table|columns={qt_entity_columns}|show_all=False|page_size=8|filter=True|sortable=True|>
 <|{qt_entity_chart}|chart|type=plotly|figure={qt_entity_figure}|height=300px|render={qt_entity_chart_visible}|>
 |>
 
@@ -900,6 +928,13 @@ QT = """
 <|{qt_entities}|selector|lov={qt_all_entities}|multiple=True|dropdown=True|filter=True|label=Entity types to detect|class_name=fullwidth|>
 <|{qt_allowlist_text}|input|label=Allowlist — words to never flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "John, Acme Corp" — these exact words will be excluded from PII detection even if the model flags them.|>
 <|{qt_denylist_text}|input|label=Denylist — words to always flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "MyCompany, ProjectX" — these words will always be treated as PII regardless of model confidence.|>
+<|layout|columns=auto 1|gap=8px|
+<|part|
+<|Show detection rationale|text|class_name=slider-label|>
+<|{qt_show_rationale}|toggle|on_change=on_qt_show_rationale_change|hover_text=When enabled, the Entity Evidence table includes the Recognizer column showing which detector flagged each span.|>
+|>
+<|part|>
+|>
 <|part|render={qt_operator=="synthesize"}|
 <|Synthetic Output (LLM/Faker)|text|class_name=sh sh-top|>
 <|{qt_synth_provider}|selector|lov={qt_synth_provider_lov}|dropdown=True|label=Synthetic provider|class_name=fullwidth|hover_text=faker uses local deterministic synthesis; openai/azure_openai call an LLM and fall back to faker on failure.|>
@@ -1114,7 +1149,7 @@ TELEMETRY = """
 
 # ─── Navigation & pages dict ──────────────────────────────────────────────────
 NAV = """
-<|menu|lov={menu_lov}|on_action=on_menu_action|label=Anonymous Studio|>
+<|menu|lov={menu_lov}|on_action=on_menu_action|label=(▀̿Ĺ̯▀̿ ̿)|>
 """
 
 PAGES = {

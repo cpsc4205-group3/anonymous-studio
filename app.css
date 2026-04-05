@@ -206,11 +206,15 @@ body,
 
 .taipy-navbar {
   background: var(--navbar-bg) !important;
+  background-image: url("images/nav-logo.svg") !important;
+  background-repeat: no-repeat !important;
+  background-position: 14px center !important;
+  background-size: 18px 18px !important;
   border-bottom: 1px solid var(--border-subtle) !important;
   position: sticky !important;
   top: 0 !important;
   z-index: var(--z-sticky) !important;
-  padding: 0 var(--space-5) !important;
+  padding: 0 var(--space-5) 0 42px !important;
   min-height: var(--navbar-height) !important;
 }
 
@@ -249,6 +253,67 @@ body,
 .taipy-menu svg {
   width: 20px !important;
   height: 20px !important;
+}
+
+.dash-logout-link a,
+.dash-logout-link a:visited {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--button-radius);
+  color: var(--text-primary) !important;
+  background: var(--bg-elevated);
+  text-decoration: none !important;
+  font-weight: 600;
+}
+
+.dash-logout-link a:hover {
+  border-color: var(--accent);
+  color: var(--accent-hover) !important;
+  text-decoration: none !important;
+}
+
+.nav-shell {
+  align-items: center;
+}
+
+.nav-auth {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-height: var(--navbar-height);
+  white-space: nowrap;
+}
+
+.nav-auth-label {
+  color: var(--text-muted) !important;
+  font-size: var(--font-size-sm) !important;
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.nav-auth-email {
+  color: var(--text-primary) !important;
+  font-size: var(--font-size-sm) !important;
+  font-weight: 600;
+}
+
+.nav-auth-logout a,
+.nav-auth-logout a:visited {
+  display: inline-block;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--button-radius);
+  color: var(--text-primary) !important;
+  background: var(--bg-elevated);
+  text-decoration: none !important;
+}
+
+.nav-auth-logout a:hover {
+  border-color: var(--accent);
+  color: var(--accent-hover) !important;
+  text-decoration: none !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -1287,7 +1352,7 @@ body,
 
 /* Active Run Monitor mini-panels — prevent long IDs / messages from bleeding */
 .settings-panel .panel {
-  overflow: hidden;
+  overflow: visible;
   min-width: 0;
 }
 
@@ -1298,6 +1363,31 @@ body,
   display: block;
   max-width: 100%;
 }
+
+/* ── Sliders — ensure thumb is always interactive ── */
+.taipy-slider {
+  padding: var(--space-3) 0 !important;
+  overflow: visible !important;
+}
+
+.taipy-slider .MuiSlider-root {
+  overflow: visible !important;
+  pointer-events: auto !important;
+  z-index: 1 !important;
+}
+
+.taipy-slider .MuiSlider-thumb {
+  pointer-events: auto !important;
+  z-index: 2 !important;
+}
+
+/* Prevent panel overflow:hidden from clipping slider thumb */
+.panel,
+.settings-panel {
+  overflow: visible !important;
+}
+
+
 
 .settings-panel .audit-stmt {
   word-break: break-word;

@@ -1,5 +1,5 @@
 # Anonymous Studio — Taipy Core Configuration
-# Generated from core_config.py via Config.export() for Taipy 4.x Studio compatibility.
+# Generated from core_config.py via Config.export() for tail 4.x Studio compatibility.
 #
 # The authoritative config is core_config.py — that's what actually runs.
 # If you change DataNodes, Tasks, or Scenarios there, regenerate this file with:
@@ -36,7 +36,7 @@ validity_period = "1d0h0m0s:timedelta"
 
 [DATA_NODE.anon_output]
 storage_type = "pickle"
-scope = "SCENARIO:SCOPE"
+scope = "GLOBAL:SCOPE"
 validity_period = "14d0h0m0s:timedelta"
 
 [DATA_NODE.job_stats]
@@ -45,7 +45,7 @@ scope = "SCENARIO:SCOPE"
 validity_period = "14d0h0m0s:timedelta"
 
 [TASK.anonymize_task]
-function = "tasks.run_pii_anonymization:function"
+function = "tasks:run_pii_anonymization"
 inputs = [ "raw_input:SECTION", "job_config:SECTION",]
 outputs = [ "anon_output:SECTION", "job_stats:SECTION",]
 skippable = "False:bool"
@@ -59,3 +59,5 @@ frequency = "WEEKLY:FREQUENCY"
 job_stats = [ "core_config._compare_job_stats:function",]
 
 [SCENARIO.pii_pipeline.sequences]
+
+
