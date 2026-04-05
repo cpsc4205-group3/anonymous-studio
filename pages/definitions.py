@@ -814,9 +814,10 @@ Done <|{kanban_done_len}|text|class_name=kh-cnt|>
 |>
 
 <|Export Pipeline Data|text|class_name=sh|>
-<|layout|columns=1 1 6|gap=12px|
-<|Export All CSV|button|on_action=on_pipeline_export_csv|class_name=secondary|>
-<|Export All JSON|button|on_action=on_pipeline_export_json|class_name=secondary|>
+<|layout|columns=2 1 1 4|gap=12px|
+<|{pipeline_export_status_filter}|selector|lov={pipeline_export_status_filter_lov}|dropdown=True|label=Filter by status|class_name=fullwidth|>
+<|Export CSV|button|on_action=on_pipeline_export_csv|class_name=secondary|>
+<|Export JSON|button|on_action=on_pipeline_export_json|class_name=secondary|>
 <|part|>|>
 |>
 

@@ -35,23 +35,8 @@ warnings.filterwarnings("ignore", message="urllib3.*", category=UserWarning)
 
 import pandas as pd
 from services.pii_image import extract_text_from_image
-from fastapi import UploadFile, File
 import requests
 from presidio_analyzer import AnalyzerEngine
-API_URL = "http://127.0.0.1:8000"
-
-def get_pipeline_cards():
-    try:
-        response = requests.get(f"{API_URL}/pipeline-cards")
-        return response.json()
-    except Exception as e:
-        print("API not ready yet:", e)
-        return []
-
-print("\n===== DEBUG START =====")
-cards = get_pipeline_cards()
-print("PIPELINE CARDS:", cards)
-print("===== DEBUG END =====\n")
 
 try:
     import plotly.graph_objects as go
@@ -985,6 +970,8 @@ in_progress_sel  = []
 review_sel       = []
 done_sel         = []
 pipeline_all_sel = []
+pipeline_export_status_filter: str = "All"
+pipeline_export_status_filter_lov: list = ["All", "backlog", "in_progress", "review", "done"]
 card_form_open = False
 card_id_edit   = ""
 card_title_f   = ""
@@ -4528,25 +4515,6 @@ def on_qt_analyze(state):
         notify(state, "success", "No PII detected.")
 
 
-    try:
-        response = requests.post(
-            "http://127.0.0.1:8000/detect-pii",
-            json={"text": state.qt_input}
-        )
-        result = response.json()
-
-        state.qt_highlight_md = str(result)
-        state.qt_entity_rows = []
-        state.qt_entity_chart_visible = False
-
-        if "Possible email detected" in str(result):
-            notify(state, "warning", "PII detected through API.")
-        else:
-            notify(state, "success", "No PII detected through API.")
-    except Exception as e:
-        notify(state, "error", f"API error: {e}")
-    
-
 def on_qt_ner_model_change(state, var_name=None, value=None):
     selected = str(value if value is not None else getattr(state, "qt_ner_model_sel", "") or "").strip()
     if not selected:
@@ -6311,43 +6279,57 @@ def on_audit_export_json(state):
 
 
 def on_pipeline_export_csv(state):
-    """Export all pipeline cards as a CSV download."""
+    """Export pipeline cards as a CSV download, optionally filtered by status."""
     if not _require_action_role(state, "pipeline_export", "Pipeline export"):
         return
     try:
-        cards = store.list_cards()
+        status_filter = str(getattr(state, "pipeline_export_status_filter", "All") or "All")
+        if status_filter and status_filter != "All":
+            cards = store.list_cards(status=status_filter)
+            label = f"{status_filter} "
+        else:
+            cards = store.list_cards()
+            label = ""
         if not cards:
-            notify(state, "warning", "No pipeline cards to export.")
+            notify(state, "warning", f"No {label}pipeline cards to export.")
             return
         rows = [dataclasses.asdict(c) for c in cards]
         df = pd.DataFrame(rows)
         csv_bytes = df.to_csv(index=False).encode("utf-8")
-        download(state, content=csv_bytes, name="pipeline_cards.csv")
+        filename = f"pipeline_{status_filter.lower()}.csv" if status_filter != "All" else "pipeline_cards.csv"
+        download(state, content=csv_bytes, name=filename)
         store.log_user_action("user", "pipeline.export", "pipeline", "",
-                              f"Exported {len(cards)} pipeline cards as CSV")
+                              f"Exported {len(cards)} {label}pipeline cards as CSV")
         _refresh_audit(state)
-        notify(state, "success", f"Exported {len(cards)} pipeline cards as CSV.")
+        notify(state, "success", f"Exported {len(cards)} {label}pipeline cards as CSV.")
     except Exception as e:
         _log.exception("pipeline_export_csv_error")
         notify(state, "error", "Failed to export pipeline cards.")
 
 
 def on_pipeline_export_json(state):
-    """Export all pipeline cards as a JSON download."""
+    """Export pipeline cards as a JSON download, optionally filtered by status."""
     if not _require_action_role(state, "pipeline_export", "Pipeline export"):
         return
     try:
-        cards = store.list_cards()
+        status_filter = str(getattr(state, "pipeline_export_status_filter", "All") or "All")
+        if status_filter and status_filter != "All":
+            cards = store.list_cards(status=status_filter)
+            label = f"{status_filter} "
+        else:
+            cards = store.list_cards()
+            label = ""
         if not cards:
-            notify(state, "warning", "No pipeline cards to export.")
+            notify(state, "warning", f"No {label}pipeline cards to export.")
             return
         rows = [dataclasses.asdict(c) for c in cards]
         json_bytes = json.dumps(rows, indent=2, default=str).encode("utf-8")
-        download(state, content=json_bytes, name="pipeline_cards.json")
+        filename = f"pipeline_{status_filter.lower()}.json" if status_filter != "All" else "pipeline_cards.json"
+        download(state, content=json_bytes, name=filename)
         store.log_user_action("user", "pipeline.export", "pipeline", "",
-                              f"Exported {len(cards)} pipeline cards as JSON")
+                              f"Exported {len(cards)} {label}pipeline cards as JSON")
         _refresh_audit(state)
-        notify(state, "success", f"Exported {len(cards)} pipeline cards as JSON.")
+        notify(state, "success", f"Exported {len(cards)} {label}pipeline cards as JSON.")
     except Exception as e:
         _log.exception("pipeline_export_json_error")
         notify(state, "error", "Failed to export pipeline cards.")
@@ -6791,71 +6773,3 @@ authz_results = [
     "Guest trying read: " + demo_authz("guest", "read"),
     "Guest trying delete: " + demo_authz("guest", "delete"),
 ]
-
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-app = FastAPI( )
-
-class TextRequest(BaseModel):
-    text: str
-
-@app.post("/detect-pii")
-def detect_pii(data: TextRequest):
-    text = data.text
-
-    if "@" in text:
-        return {"message": "Possible email detected", "input": text}
-
-    return {"message": "No PII detected", "input": text}
-
-@app.get("/pipeline-cards")
-def get_pipeline_cards():
-    return {"message": "Pipeline cards endpoint working"}
-
-pipeline_cards = []
-
-class PipelineCard(BaseModel):
-    name: str
-    status: str
-
-@app.post("/pipeline-cards")
-def create_pipeline_card(card: PipelineCard):
-    pipeline_cards.append(card)
-    return {"message": "Pipeline card created", "card": card}
-
-@app.put("/pipeline-cards/{index}")
-def update_pipeline_card(index: int, card: PipelineCard):
-    if index < len(pipeline_cards):
-        pipeline_cards[index] = card
-        return {"message": "Pipeline card updated", "card": card}
-    return {"error": "Card not found"}
-
-@app.delete("/pipeline-cards/{index}")
-def delete_pipeline_card(index: int):
-    if index < len(pipeline_cards):
-        deleted_card = pipeline_cards.pop(index)
-        return {"message": "Pipeline card deleted", "card": deleted_card}
-    return {"error": "Card not found"}
-
-@app.post("/detect-pii-image")
-async def detect_pii_image(file: UploadFile = File(...)):
-    contents = await file.read()
-
-    # Save temporary image
-    with open("temp_image.png", "wb") as f:
-        f.write(contents)
-
-    # Extract text using OCR
-    text = extract_text_from_image("temp_image.png")
-
-    analyzer = AnalyzerEngine()
-    results = analyzer.analyze(text=text, language="en")
-
-    return  {
-        "extracted_text": text,
-        "pii_detected": [str(r) for r in results]
-    }
-
-if __name__ == "__main__":
-    run_app()
