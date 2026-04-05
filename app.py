@@ -34,8 +34,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 warnings.filterwarnings("ignore", message="urllib3.*", category=UserWarning)
 
 import pandas as pd
-from services.pii_image import extract_text_from_image
-import requests
 from presidio_analyzer import AnalyzerEngine
 
 try:
