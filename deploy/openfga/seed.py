@@ -226,7 +226,7 @@ def main() -> None:
     print(f"  export OPENFGA_STORE_ID={store_id}")
     print(f"  export OPENFGA_MODEL_ID={model_id}")
     print()
-    print("  Open the Studio:  http://localhost:3000")
+    print("  Open the Studio:  http://localhost:3000/playground")
 
 
 if __name__ == "__main__":
