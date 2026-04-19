@@ -6267,17 +6267,25 @@ def on_audit_clear(state):
     _refresh_audit(state)
 
 
-def on_export_audit_csv(state):
-    """Download the current audit log as a CSV file."""
+def _require_audit_export_authorization(state) -> bool:
     if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
         notify(state, "error",
                "Audit export requires an authenticated session. "
-               "Sign in via the auth proxy or enable local break-glass access first."); return
+               "Sign in via the auth proxy or enable local break-glass access first.")
+        return False
     _principal = principal_for(state)
     if not authz_check(_principal, "can_export", "audit_log", "global"):
         notify(state, "error",
                "Authorization denied: 'compliance_officer' or 'admin' role required "
-               "to export the audit log."); return
+               "to export the audit log.")
+        return False
+    return True
+
+
+def on_export_audit_csv(state):
+    """Download the current audit log as a CSV file."""
+    if not _require_audit_export_authorization(state):
+        return
 
     df = state.audit_table
     if isinstance(df, pd.DataFrame) and not df.empty:
@@ -6288,16 +6296,7 @@ def on_export_audit_csv(state):
 
 def on_audit_export_csv(state):
     """Export the full audit log as a CSV download."""
-    if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
-        notify(state, "error",
-               "Audit export requires an authenticated session. "
-               "Sign in via the auth proxy or enable local break-glass access first.")
-        return
-    _principal = principal_for(state)
-    if not authz_check(_principal, "can_export", "audit_log", "global"):
-        notify(state, "error",
-               "Authorization denied: 'compliance_officer' or 'admin' role required "
-               "to export the audit log.")
+    if not _require_audit_export_authorization(state):
         return
 
     if not _require_action_role(state, "audit_export", "Audit export"):
@@ -6322,15 +6321,8 @@ def on_audit_export_csv(state):
 
 def on_export_audit_json(state):
     """Download the current audit log as a JSON file."""
-    if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
-        notify(state, "error",
-               "Audit export requires an authenticated session. "
-               "Sign in via the auth proxy or enable local break-glass access first."); return
-    _principal = principal_for(state)
-    if not authz_check(_principal, "can_export", "audit_log", "global"):
-        notify(state, "error",
-               "Authorization denied: 'compliance_officer' or 'admin' role required "
-               "to export the audit log."); return
+    if not _require_audit_export_authorization(state):
+        return
 
     df = state.audit_table
     if isinstance(df, pd.DataFrame) and not df.empty:
@@ -6343,16 +6335,7 @@ def on_export_audit_json(state):
 
 def on_audit_export_json(state):
     """Export the full audit log as a JSON download."""
-    if getattr(state, "gui_auth_source", "unauthenticated") not in {"proxy", "break_glass"} or not getattr(state, "gui_user", ""):
-        notify(state, "error",
-               "Audit export requires an authenticated session. "
-               "Sign in via the auth proxy or enable local break-glass access first.")
-        return
-    _principal = principal_for(state)
-    if not authz_check(_principal, "can_export", "audit_log", "global"):
-        notify(state, "error",
-               "Authorization denied: 'compliance_officer' or 'admin' role required "
-               "to export the audit log.")
+    if not _require_audit_export_authorization(state):
         return
 
     if not _require_action_role(state, "audit_export", "Audit export"):

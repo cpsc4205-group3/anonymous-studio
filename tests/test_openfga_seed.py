@@ -24,3 +24,14 @@ def test_seed_inline_model_job_relations_match_enforcement_scope():
     assert "can_submit" in job_relations
     assert "can_cancel" in job_relations
     assert {"analyst", "reviewer", "compliance_officer", "admin"} <= set(job_relations.keys())
+
+    def _computed_children(rel_def: dict) -> set[str]:
+        children = rel_def["union"]["child"]
+        return {
+            child["computedUserset"]["relation"]
+            for child in children
+            if "computedUserset" in child
+        }
+
+    assert _computed_children(job_relations["can_submit"]) == {"analyst", "reviewer", "compliance_officer", "admin"}
+    assert _computed_children(job_relations["can_cancel"]) == {"reviewer", "compliance_officer", "admin"}
