@@ -85,7 +85,8 @@ Current model summary:
 - `card:can_attest` is granted to `reviewer`, `compliance_officer`, or `admin`
 - `audit_log:can_export` is granted to `compliance_officer` or `admin`
 - `session:can_view` is granted to `analyst` or `admin`
-- `job:can_submit` is granted to `analyst` or `admin`
+- `job:can_submit` is granted to `analyst`, `reviewer`, `compliance_officer`, or `admin`
+- `job:can_cancel` is granted to `reviewer`, `compliance_officer`, or `admin`
 
 Only `admin` inherits `compliance_officer` in the current model. The other
 roles are not a strict hierarchy.

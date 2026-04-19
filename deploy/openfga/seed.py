@@ -139,14 +139,22 @@ def _build_model_payload() -> dict:
             {
                 "type": "job",
                 "relations": {
-                    "analyst":    union(this()),
-                    "admin":      union(this()),
-                    "can_submit": union(computed("analyst"), computed("admin")),
+                    "analyst":            union(this()),
+                    "reviewer":           union(this()),
+                    "compliance_officer": union(this()),
+                    "admin":              union(this(), computed("compliance_officer")),
+                    "can_submit":         union(computed("analyst"), computed("reviewer"),
+                                               computed("compliance_officer"), computed("admin")),
+                    "can_cancel":         union(computed("reviewer"),
+                                               computed("compliance_officer"), computed("admin")),
                 },
                 "metadata": {"relations": {
-                    "analyst":    {T: USER_AND_GROUP},
-                    "admin":      {T: USER_AND_GROUP},
-                    "can_submit": {T: []},
+                    "analyst":            {T: USER_AND_GROUP},
+                    "reviewer":           {T: USER_AND_GROUP},
+                    "compliance_officer": {T: USER_AND_GROUP},
+                    "admin":              {T: USER_AND_GROUP},
+                    "can_submit":         {T: []},
+                    "can_cancel":         {T: []},
                 }},
             },
             {
