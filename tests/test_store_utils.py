@@ -89,6 +89,15 @@ def test_is_in_time_window_week():
     assert not is_in_time_window(ten_days_ago, "week")
 
 
+def test_is_in_time_window_accepts_zulu_timestamp():
+    now_utc = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    assert is_in_time_window(now_utc, "today")
+
+
+def test_is_in_time_window_invalid_type_returns_false():
+    assert not is_in_time_window(None, "today")
+
+
 # ── Audit Entry Filtering Tests ────────────────────────────────────────────────
 
 @pytest.fixture

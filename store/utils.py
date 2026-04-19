@@ -54,13 +54,16 @@ def is_in_time_window(timestamp_str: str, window: str) -> bool:
     Returns:
         True if timestamp is within window (always True for "all")
     """
-    cutoff = parse_time_window(window)
-    if cutoff is None:
-        return True
     try:
+        cutoff = parse_time_window(window)
+        if cutoff is None:
+            return True
         ts = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        # Normalize aware timestamps to naive UTC for safe comparison with naive cutoffs.
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(tz=None).replace(tzinfo=None)
         return ts >= cutoff
-    except (ValueError, AttributeError):
+    except (TypeError, ValueError, AttributeError):
         return False
 
 
