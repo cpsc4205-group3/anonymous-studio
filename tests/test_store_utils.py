@@ -1,5 +1,5 @@
 """Tests for store.utils data access utilities."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -90,7 +90,7 @@ def test_is_in_time_window_week():
 
 
 def test_is_in_time_window_accepts_zulu_timestamp():
-    now_utc = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    now_utc = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     assert is_in_time_window(now_utc, "today")
 
 
