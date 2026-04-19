@@ -284,3 +284,59 @@ class TestAppEnforcement:
         assert any(lvl == "error" for lvl, _ in notified)
         mock_authz.assert_not_called()
         mock_download.assert_not_called()
+
+    def test_audit_export_csv_authz_deny_blocks_download(self):
+        app = _app()
+        state = _make_state(gui_auth_source="proxy", gui_user="bob",
+                            gui_user_email="bob@example.com")
+        notified = []
+
+        with patch("app.authz_check", return_value=False), \
+             patch("app.notify", side_effect=lambda s, lvl, msg: notified.append((lvl, msg))), \
+             patch("app.download") as mock_download:
+            app.on_audit_export_csv(state)
+
+        assert any(lvl == "error" for lvl, _ in notified)
+        mock_download.assert_not_called()
+
+    def test_audit_export_json_authz_deny_blocks_download(self):
+        app = _app()
+        state = _make_state(gui_auth_source="proxy", gui_user="bob",
+                            gui_user_email="bob@example.com")
+        notified = []
+
+        with patch("app.authz_check", return_value=False), \
+             patch("app.notify", side_effect=lambda s, lvl, msg: notified.append((lvl, msg))), \
+             patch("app.download") as mock_download:
+            app.on_audit_export_json(state)
+
+        assert any(lvl == "error" for lvl, _ in notified)
+        mock_download.assert_not_called()
+
+    def test_audit_export_csv_unauthenticated_blocks_before_authz(self):
+        app = _app()
+        state = _make_state(gui_auth_source="unauthenticated", gui_user="", gui_user_email="")
+        notified = []
+
+        with patch("app.authz_check") as mock_authz, \
+             patch("app.notify", side_effect=lambda s, lvl, msg: notified.append((lvl, msg))), \
+             patch("app.download") as mock_download:
+            app.on_audit_export_csv(state)
+
+        assert any(lvl == "error" for lvl, _ in notified)
+        mock_authz.assert_not_called()
+        mock_download.assert_not_called()
+
+    def test_audit_export_json_unauthenticated_blocks_before_authz(self):
+        app = _app()
+        state = _make_state(gui_auth_source="unauthenticated", gui_user="", gui_user_email="")
+        notified = []
+
+        with patch("app.authz_check") as mock_authz, \
+             patch("app.notify", side_effect=lambda s, lvl, msg: notified.append((lvl, msg))), \
+             patch("app.download") as mock_download:
+            app.on_audit_export_json(state)
+
+        assert any(lvl == "error" for lvl, _ in notified)
+        mock_authz.assert_not_called()
+        mock_download.assert_not_called()
