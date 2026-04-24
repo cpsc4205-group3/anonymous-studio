@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anonymous Studio — Analyze</title>
+  <link rel="stylesheet" href="{{ url_for('hybrid_redaction.static', filename='hybrid_redaction.css') }}" />
+</head>
+<body class="hybrid-body">
+  <div id="hybrid-shell" class="hybrid-shell is-collapsed">
+    <aside class="hybrid-nav-shell" aria-label="Primary navigation">
+      <div class="hybrid-nav-top">
+        <button id="hybrid-nav-toggle" class="hybrid-toggle-btn" type="button" aria-label="Toggle sidebar" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+
+      <nav class="hybrid-nav-list">
+        <a class="hybrid-nav-link" href="{{ main_app_base }}/dashboard" title="Dashboard">
+          <span class="hybrid-nav-icon"><img src="{{ url_for('hybrid_redaction.main_image', filename='dashboard.svg') }}" alt="" /></span>
+          <span class="hybrid-nav-label">Dashboard</span>
+        </a>
+        <a class="hybrid-nav-link is-active" href="{{ hybrid_home }}" title="Analyze Text">
+          <span class="hybrid-nav-icon"><img src="{{ url_for('hybrid_redaction.main_image', filename='piitext.svg') }}" alt="" /></span>
+          <span class="hybrid-nav-label">Analyze Text</span>
+        </a>
+        <a class="hybrid-nav-link" href="{{ main_app_base }}/jobs" title="Batch Jobs">
+          <span class="hybrid-nav-icon"><img src="{{ url_for('hybrid_redaction.main_image', filename='jobs.svg') }}" alt="" /></span>
+          <span class="hybrid-nav-label">Batch Jobs</span>
+        </a>
+        <a class="hybrid-nav-link" href="{{ main_app_base }}/pipeline" title="Pipeline">
+          <span class="hybrid-nav-icon"><img src="{{ url_for('hybrid_redaction.main_image', filename='pipeline.svg') }}" alt="" /></span>
+          <span class="hybrid-nav-label">Pipeline</span>
+        </a>
+        <a class="hybrid-nav-link" href="{{ main_app_base }}/schedule" title="Reviews">
+          <span class="hybrid-nav-icon"><img src="{{ url_for('hybrid_redaction.main_image', filename='schedule.svg') }}" alt="" /></span>
+          <span class="hybrid-nav-label">Reviews</span>
+        </a>
+        <a class="hybrid-nav-link" href="{{ main_app_base }}/audit" title="Audit Log">
+          <span class="hybrid-nav-icon"><img src="{{ url_for('hybrid_redaction.main_image', filename='audit.svg') }}" alt="" /></span>
+          <span class="hybrid-nav-label">Audit Log</span>
+        </a>
+        <a class="hybrid-nav-link" href="{{ main_app_base }}/ui_demo" title="UI">
+          <span class="hybrid-nav-icon"><img src="{{ url_for('hybrid_redaction.main_image', filename='dashboard.svg') }}" alt="" /></span>
+          <span class="hybrid-nav-label">UI</span>
+        </a>
+        <a class="hybrid-nav-link" href="{{ main_app_base }}/settings" title="Settings">
+          <span class="hybrid-nav-icon hybrid-nav-gear">⚙</span>
+          <span class="hybrid-nav-label">Settings</span>
+        </a>
+      </nav>
+    </aside>
+
+    <main class="hybrid-page-shell">
+<div class="app-shell">
+          <aside class="sidebar">
+            <div class="brand-block">
+              <span class="eyebrow">Analyze workspace</span>
+              <h1>Analyze Studio</h1>
+              <p>Same engine, same session data, same pipeline card connection — now shown inside a layout that feels like the main app.</p>
+            </div>
+
+            <section class="sidebar-card">
+              <div class="sidebar-title-row">
+                <h2>Engine status</h2>
+                <span class="status-pill">Ready</span>
+              </div>
+              <p id="spacy-status" class="small-note">{{ spacy_status }}</p>
+            </section>
+
+            <section class="sidebar-card">
+              <div class="sidebar-title-row">
+                <h2>Pipeline card</h2>
+                <span class="status-pill muted">Optional</span>
+              </div>
+              <label class="field-label" for="pipeline-card">Attach session to card</label>
+              <select id="pipeline-card" class="input-control">
+                <option value="">None</option>
+                {% for card in cards %}
+                <option value="{{ card.id }}">{{ card.title }}</option>
+                {% endfor %}
+              </select>
+            </section>
+
+            <section class="sidebar-card session-card">
+              <div class="sidebar-title-row">
+                <h2>Saved sessions</h2>
+                <span id="session-count" class="status-pill muted">{{ sessions|length }}</span>
+              </div>
+              <div class="session-actions-top">
+                <button id="refresh-sessions-btn" type="button" class="ghost-btn compact">Refresh</button>
+              </div>
+              <div id="session-list" class="session-list">
+                {% if sessions %}
+                  {% for session in sessions %}
+                  <button type="button" class="session-item" data-session-id="{{ session.id }}">
+                    <strong>{{ session.title }}</strong>
+                    <span>{{ session.operator }} · {{ session.entities }} entities</span>
+                    <small>{{ session.createdAt }}</small>
+                  </button>
+                  {% endfor %}
+                {% else %}
+                  <div class="empty-inline">No saved sessions yet.</div>
+                {% endif %}
+              </div>
+            </section>
+          </aside>
+
+          <main class="main-content">
+            <section class="hero-card">
+              <div>
+                <span class="eyebrow">Connected page</span>
+                <h2>Hybrid analyze workspace</h2>
+                <p>This screen now feels closer to the main app while still running the dedicated Hybrid Analyze page directly.</p>
+              </div>
+              <div class="hero-actions">
+                <a href="{{ main_app_base }}/dashboard" class="ghost-btn top-link">Dashboard</a>
+                <button id="load-sample-btn" type="button" class="ghost-btn">Load sample</button>
+                <button id="clear-btn" type="button" class="ghost-btn">Clear</button>
+                <button id="toggle-advanced-btn" type="button" class="primary-outline-btn">Advanced settings</button>
+              </div>
+            </section>
+
+            <form id="hybrid-form" class="workspace-grid">
+              <section class="panel panel-input">
+                <div class="panel-header">
+                  <div>
+                    <h3>Input and controls</h3>
+                    <p>Paste text or upload a file, choose entities, then analyze or anonymize.</p>
+                  </div>
+                  <span class="panel-chip">Main + public</span>
+                </div>
+
+                <div class="field-grid">
+                  <div class="field-block field-block-lg">
+                    <label for="text-input" class="field-label">Input text</label>
+                    <textarea id="text-input" name="text" rows="12" placeholder="Paste text to analyze or anonymize..."></textarea>
+                  </div>
+
+                  <div class="field-row two-col">
+                    <div class="field-block">
+                      <label for="file-input" class="field-label">Upload file</label>
+                      <input id="file-input" name="file" type="file" accept=".txt,.csv,.json,.md,.log" />
+                      <p class="small-note">Supports .txt, .csv, .json, .md, and .log.</p>
+                    </div>
+                    <div class="field-block">
+                      <label for="operator" class="field-label">De-identification method</label>
+                      <select id="operator" name="operator" class="input-control">
+                        <option value="replace">Replace</option>
+                        <option value="redact">Redact</option>
+                        <option value="mask">Mask</option>
+                        <option value="hash">Hash</option>
+                        <option value="synthesize">Synthesize</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="field-row two-col">
+                    <div class="field-block">
+                      <label for="threshold" class="field-label">Confidence threshold</label>
+                      <input id="threshold" name="threshold" type="range" min="0.10" max="1.00" step="0.05" value="{{ default_threshold }}" />
+                      <div class="slider-meta"><span>Lower = more hits</span><strong id="threshold-value">{{ '%.2f'|format(default_threshold) }}</strong></div>
+                    </div>
+                    <div class="field-block">
+                      <label for="ner-model" class="field-label">NER model</label>
+                      <select id="ner-model" name="ner_model" class="input-control">
+                        {% for option in spacy_model_options %}
+                        <option value="{{ option }}">{{ option }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="field-block">
+                    <div class="field-label-row">
+                      <label class="field-label">Entity types to detect</label>
+                      <div class="inline-actions">
+                        <button id="select-all-btn" type="button" class="tiny-btn">Select all</button>
+                        <button id="clear-all-btn" type="button" class="tiny-btn">Clear all</button>
+                      </div>
+                    </div>
+                    <div class="entity-grid">
+                      {% for entity in all_entities %}
+                      <label class="entity-chip">
+                        <input type="checkbox" name="entities" value="{{ entity }}" checked />
+                        <span>{{ entity }}</span>
+                      </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+
+                  <div class="action-bar">
+                    <button id="analyze-btn" type="button" class="primary-btn">Detect PII</button>
+                    <button id="anonymize-btn" type="button" class="primary-btn emphasis">Anonymize</button>
+                    <button id="download-text-btn" type="button" class="ghost-btn" disabled>Download TXT</button>
+                    <button id="download-entities-btn" type="button" class="ghost-btn" disabled>Download CSV</button>
+                    <button id="save-session-btn" type="button" class="ghost-btn" disabled>Save session</button>
+                  </div>
+                  <div id="message-slot"></div>
+                </div>
+              </section>
+
+              <section class="panel panel-summary">
+                <div class="panel-header">
+                  <div>
+                    <h3>Summary and evidence</h3>
+                    <p>KPI cards, confidence mix, entity evidence, and linked previews.</p>
+                  </div>
+                  <span class="panel-chip">Advanced output</span>
+                </div>
+
+                <div class="summary-grid">
+                  <div class="summary-kpi"><span>Total entities</span><strong id="kpi-total">0</strong></div>
+                  <div class="summary-kpi"><span>Dominant band</span><strong id="kpi-band">N/A</strong></div>
+                  <div class="summary-kpi"><span>Average confidence</span><strong id="kpi-confidence">0%</strong></div>
+                  <div class="summary-kpi"><span>Low confidence</span><strong id="kpi-low">0</strong></div>
+                </div>
+
+                <div class="summary-detail-grid">
+                  <div>
+                    <h4>Entity mix</h4>
+                    <div id="entity-mix" class="tag-list empty-inline">No entities yet.</div>
+                  </div>
+                  <div>
+                    <h4>Confidence bands</h4>
+                    <div id="band-mix" class="tag-list empty-inline">No confidence data yet.</div>
+                  </div>
+                </div>
+
+                <div class="chart-card">
+                  <div class="chart-head">
+                    <h4>Entity distribution</h4>
+                    <span class="small-note">Simple visual breakdown</span>
+                  </div>
+                  <div id="entity-bars" class="bar-chart empty-inline">Run an analysis to populate this chart.</div>
+                </div>
+
+                <div class="preview-grid">
+                  <div class="preview-card">
+                    <div class="preview-head">
+                      <h4>Original text</h4>
+                      <span class="small-note">Hover a detected item to link both sides</span>
+                    </div>
+                    <div id="original-preview" class="text-preview empty-state-box">Your original text will appear here after analysis.</div>
+                  </div>
+                  <div class="preview-card">
+                    <div class="preview-head">
+                      <h4>Linked result preview</h4>
+                      <span class="small-note">Shows placeholder or masked result linked to the source spans</span>
+                    </div>
+                    <div id="result-preview" class="text-preview empty-state-box">The anonymized preview will appear here after analysis.</div>
+                  </div>
+                </div>
+
+                <div class="output-card">
+                  <div class="preview-head">
+                    <h4>Final output</h4>
+                    <span id="output-mode-label" class="small-note">Ready for TXT download</span>
+                  </div>
+                  <pre id="final-output" class="final-output-box">The final output text will appear here after analysis.</pre>
+                </div>
+
+                <div class="table-card">
+                  <div class="table-head">
+                    <h4>Entity evidence</h4>
+                    <label class="toggle-inline">
+                      <input id="show-rationale" type="checkbox" checked />
+                      <span>Show recognizer and rationale</span>
+                    </label>
+                  </div>
+                  <div class="table-wrap">
+                    <table id="entity-table">
+                      <thead>
+                        <tr>
+                          <th>Entity</th>
+                          <th>Text</th>
+                          <th>Confidence</th>
+                          <th>Band</th>
+                          <th>Span</th>
+                          <th class="rationale-col">Recognizer</th>
+                          <th class="rationale-col">Rationale</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr><td colspan="7" class="table-empty">Run an analysis to populate this table.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+            </form>
+          </main>
+        </div>
+    </main>
+  </div>
+
+  <section id="advanced-drawer" class="advanced-drawer hidden">
+    <div class="advanced-card">
+      <div class="panel-header">
+        <div>
+          <h3>Advanced settings</h3>
+          <p>These settings bring in the stronger controls from the main analyze page.</p>
+        </div>
+        <button id="close-advanced-btn" type="button" class="ghost-btn compact">Close</button>
+      </div>
+
+      <div class="advanced-grid">
+        <div class="field-block">
+          <label for="allowlist-input" class="field-label">Allowlist</label>
+          <input id="allowlist-input" type="text" placeholder="term1, term2" />
+        </div>
+        <div class="field-block">
+          <label for="denylist-input" class="field-label">Denylist</label>
+          <input id="denylist-input" type="text" placeholder="required PII values" />
+        </div>
+        <div class="field-block">
+          <label for="synth-provider" class="field-label">Synthetic provider</label>
+          <select id="synth-provider" class="input-control">
+            {% for option in synth_provider_options %}
+            <option value="{{ option }}">{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field-block">
+          <label for="synth-model" class="field-label">Model / profile</label>
+          <input id="synth-model" type="text" value="gpt-4o-mini" />
+        </div>
+        <div class="field-block">
+          <label for="synth-api-key" class="field-label">API key</label>
+          <input id="synth-api-key" type="password" placeholder="Only needed for OpenAI or Azure OpenAI" />
+        </div>
+        <div class="field-block">
+          <label for="synth-api-base" class="field-label">API base URL</label>
+          <input id="synth-api-base" type="text" placeholder="Optional custom endpoint" />
+        </div>
+        <div class="field-block">
+          <label for="synth-deployment" class="field-label">Azure deployment</label>
+          <input id="synth-deployment" type="text" placeholder="Azure deployment name" />
+        </div>
+        <div class="field-block">
+          <label for="synth-api-version" class="field-label">API version</label>
+          <input id="synth-api-version" type="text" value="2024-08-01-preview" />
+        </div>
+        <div class="field-block">
+          <label for="synth-temperature" class="field-label">Temperature</label>
+          <input id="synth-temperature" type="number" step="0.1" min="0" max="2" value="0.2" />
+        </div>
+        <div class="field-block">
+          <label for="synth-max-tokens" class="field-label">Max tokens</label>
+          <input id="synth-max-tokens" type="number" min="128" max="4000" value="800" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>window.HYBRID_ROUTE_PREFIX = {{ route_prefix|tojson }};</script>
+  <script src="{{ url_for('hybrid_redaction.static', filename='hybrid_redaction.js') }}"></script>
+</body>
+</html>

@@ -37,6 +37,9 @@ def on_appt_cancel(state, *args, **kwargs):
 def on_appt_delete(state, *args, **kwargs):
     return _dispatch_app_action(state, "on_appt_delete", *args, **kwargs)
 
+def on_open_hybrid_analyze(state, *args, **kwargs):
+    return _dispatch_app_action(state, "on_open_hybrid_analyze", *args, **kwargs)
+
 def on_appt_edit(state, *args, **kwargs):
     return _dispatch_app_action(state, "on_appt_edit", *args, **kwargs)
 
@@ -932,145 +935,18 @@ QT = """
 <|part|class_name=pg|
 
 <|part|class_name=page-hd|
-<|Analyze Text|text|class_name=page-title|>
-<|Paste or type any text to detect and redact personally identifiable information|text|class_name=page-sub|>
-|>
-
-<|part|class_name=nlp-banner status-ribbon|
-<|NLP|text|class_name=banner-label|>
-<|{spacy_status_label}|button|on_action=on_qt_settings_open|class_name=store-mode-pill plain|hover_text={spacy_status_hover}|>
+<|Analyze Studio|text|class_name=page-title|>
+<|Open the full Hybrid Analyze workspace from inside this app.|text|class_name=page-sub|>
 |>
 
 <|part|class_name=panel|
-<|1. Input and Run|text|class_name=sh sh-top|>
-<|{qt_input}|input|multiline=True|lines_shown=10|label=Input text|class_name=fullwidth|>
-<|{qt_entities}|selector|lov={qt_all_entities}|multiple=True|dropdown=True|filter=True|label=Entity types to detect|class_name=fullwidth|hover_text=Select which PII entity types to look for. Default: all 17 types selected. Narrowing scope improves speed and reduces false positives.|>
-
-<|{qt_operator}|selector|lov={qt_operator_list}|dropdown=True|label=De-identification method|class_name=fullwidth|hover_text=Presidio operators: replace (default), redact, mask, hash, or synthesize (LLM/Faker).|>
-
-<|part|class_name=qt-actions|
-<|Detect PII|button|on_action=on_qt_analyze|>
-<|Anonymize|button|on_action=on_qt_anonymize|>
-<|Settings|button|on_action=on_qt_settings_open|class_name=secondary|>
-<|Load Sample|button|on_action=on_qt_load_sample|class_name=secondary|>
-<|Clear|button|on_action=on_qt_clear|class_name=secondary|>
-|>
-
-<|part|class_name=result-strip|
-<|layout|columns=1 1 1 1|gap=10px|
-<|part|class_name=health-kpi qt-kpi qt-kpi-gray|
-<|{qt_kpi_total_entities_ticker}|text|class_name=health-kpi-v qt-kpi-v qt-kpi-gray-v|>
-<|Entities Detected|text|class_name=health-kpi-l|>
-|>
-<|part|class_name=health-kpi qt-kpi qt-kpi-purple|
-<|{qt_kpi_dominant_band_ticker}|text|class_name=health-kpi-v qt-kpi-v qt-kpi-purple-v|>
-<|Dominant Band|text|class_name=health-kpi-l|>
-|>
-<|part|class_name=health-kpi qt-kpi qt-kpi-yellow|
-<|{qt_kpi_avg_confidence_ticker}|text|class_name=health-kpi-v qt-kpi-v qt-kpi-yellow-v|>
-<|Avg Confidence|text|class_name=health-kpi-l|>
-|>
-<|part|class_name=health-kpi qt-kpi qt-kpi-green|
-<|{qt_kpi_low_confidence_ticker}|text|class_name=health-kpi-v qt-kpi-v qt-kpi-green-v|>
-<|Low Confidence|text|class_name=health-kpi-l|>
-|>
-|>
-<|Summary|text|class_name=strip-label|>
-<|{qt_summary}|text|mode=md|class_name=result-line|>
-<|Confidence Profile|text|class_name=strip-label|>
-<|{qt_confidence_md}|text|mode=md|class_name=result-line|>
-<|Entity Mix|text|class_name=strip-label|>
-<|{qt_entity_breakdown_md}|text|class_name=result-line|>
-<|{qt_conf_bands_md}|text|class_name=result-line|>
-|>
-|>
-
-<|2. Output|text|class_name=sh|>
-<|layout|columns=1 1|gap=24px|
-<|part|class_name=panel|
-<|Detected PII|text|class_name=sh sh-top|>
-<|{qt_highlight_md}|text|mode=md|class_name=hi-box|>
-|>
-<|part|class_name=panel|
-<|Anonymized Output|text|class_name=sh sh-top|>
-<|{qt_anonymized_raw}|text|mode=pre|class_name=anon-box|>
-<|layout|columns=1 1 8|gap=8px|
-<|Download TXT|button|on_action=on_qt_download_anonymized|class_name=secondary|render={qt_anonymized_raw!=""}|>
-<|Download Entities CSV|button|on_action=on_qt_download_entities|class_name=secondary|render={qt_has_entities}|>
-<|part|>
-|>
-|>
-|>
-
-<|part|class_name=panel entity-evidence-panel|
-<|3. Entity Evidence|text|class_name=sh sh-top|>
-<|{qt_entity_rows}|table|columns={qt_entity_columns}|show_all=False|page_size=8|filter=True|sortable=True|>
-<|{qt_entity_chart}|chart|type=plotly|figure={qt_entity_figure}|height=300px|render={qt_entity_chart_visible}|>
-|>
-
-<|Saved Sessions|text|class_name=sh|>
-<|part|class_name=panel|
-<|layout|columns=5 1|gap=8px|
-<|{qt_card_f}|selector|lov={qt_card_opts}|dropdown=True|label=Attach to card (optional)|class_name=fullwidth|hover_text=Link this session to a pipeline card for traceability and auditing.|>
-<|Save Session|button|on_action=on_qt_save_session|class_name=secondary|>
-|>
-<|{qt_sessions_data}|table|columns=ID;Title;Operator;Entities;Created|show_all=False|page_size=6|filter=True|sortable=True|on_action=on_qt_session_select|>
-<|layout|columns=1 1|gap=8px|render={qt_selected_session!=""}|
-<|Load Session|button|on_action=on_qt_load_session|class_name=secondary|>
-<|Download Session|button|on_action=on_qt_download_session|class_name=secondary|>
-|>
-|>
-
-<|{qt_settings_open}|dialog|title=Detection Settings|on_action=on_qt_settings_close|width=720px|
-<|{qt_ner_model_sel}|selector|lov={qt_ner_model_lov}|dropdown=True|label=NER model package|on_change=on_qt_ner_model_change|class_name=fullwidth|hover_text=Presidio-style model package presets. This build executes spaCy in-process and maps non-spaCy presets to spaCy auto mode.|>
-<|part|render={qt_ner_model_sel=="Other"}|
-<|{qt_ner_other_model}|input|label=Other model name|class_name=fullwidth|hover_text=Custom model identifier or path (e.g. local spaCy model).|>
-|>
-<|part|render={qt_ner_note!=""}|
-<|{qt_ner_note}|text|class_name=inline-hint|>
-|>
-<|{qt_operator}|selector|lov={qt_operator_list}|dropdown=True|label=De-identification approach|class_name=fullwidth|hover_text=Presidio-style approaches: redact, replace, mask, hash, or synthesize.|>
-<|Min. confidence|text|class_name=slider-label|>
-<|{qt_threshold}|slider|min=0.1|max=1.0|step=0.05|>
-<|{qt_threshold}|text|format=Threshold: %.2f|>
-<|{qt_entities}|selector|lov={qt_all_entities}|multiple=True|dropdown=True|filter=True|label=Entity types to detect|class_name=fullwidth|>
-<|{qt_allowlist_text}|input|label=Allowlist — words to never flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "John, Acme Corp" — these exact words will be excluded from PII detection even if the model flags them.|>
-<|{qt_denylist_text}|input|label=Denylist — words to always flag as PII (comma-separated)|class_name=fullwidth|hover_text=e.g. "MyCompany, ProjectX" — these words will always be treated as PII regardless of model confidence.|>
-<|layout|columns=auto 1|gap=8px|
-<|{qt_show_rationale}|toggle|label=Show detection rationale|on_change=on_qt_show_rationale_change|hover_text=When enabled, the Entity Evidence table shows the Recognizer and Rationale columns explaining why each span was flagged as PII.|>
-<|part|>
-|>
-<|part|render={qt_operator=="synthesize"}|
-<|Synthetic Output (LLM/Faker)|text|class_name=sh sh-top|>
-<|{qt_synth_provider}|selector|lov={qt_synth_provider_lov}|dropdown=True|label=Synthetic provider|class_name=fullwidth|hover_text=faker uses local deterministic synthesis; openai/azure_openai call an LLM and fall back to faker on failure.|>
-<|{qt_synth_model}|input|label=Model name|class_name=fullwidth|hover_text=For Azure OpenAI, use deployment name if not set below.|>
-<|part|render={qt_synth_provider=="azure_openai"}|
-<|{qt_synth_deployment}|input|label=Azure deployment|class_name=fullwidth|>
-<|{qt_synth_api_base}|input|label=Azure endpoint|class_name=fullwidth|>
-<|{qt_synth_api_version}|input|label=API version|class_name=fullwidth|>
-|>
-<|part|render={qt_synth_provider=="openai"}|
-<|{qt_synth_api_base}|input|label=OpenAI base URL (optional)|class_name=fullwidth|hover_text=Leave empty for the default OpenAI API endpoint.|>
-|>
-<|{qt_synth_api_key}|input|label=API key|password=True|class_name=fullwidth|>
-<|layout|columns=1 1|gap=12px|
-<|{qt_synth_temperature}|number|label=Temperature|min=0|max=2|step=0.1|>
-<|{qt_synth_max_tokens}|number|label=Max tokens|min=128|max=4000|step=64|>
-|>
-<|part|render={qt_synth_note!=""}|
-<|{qt_synth_note}|text|class_name=inline-hint|>
-|>
-|>
-<|layout|columns=1 1|gap=8px|
-<|Apply|button|on_action=on_qt_settings_close|>
-<|Close|button|on_action=on_qt_settings_close|class_name=secondary|>
-|>
+<|Open Hybrid Analyze|button|on_action=on_open_hybrid_analyze|class_name=primary fullwidth|>
+<|This fallback page keeps the menu working. The sidebar Analyze button opens Hybrid Analyze directly in the same tab.|text|class_name=inline-hint|>
 |>
 
 |>
 """
 
-# ─── Plotly UI ────────────────────────────────────────────────────────────────
 UI_DEMO = """
 <|part|class_name=pg|
 

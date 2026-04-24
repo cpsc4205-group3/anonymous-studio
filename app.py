@@ -17,7 +17,7 @@ import logging
 import scheduler
 import os, re, time, warnings, tempfile, mimetypes
 
-from threading import Thread
+from threading import Thread, Lock
 from services.notifications import send_email_notification
 
 from pymongo import MongoClient
@@ -126,6 +126,8 @@ from services.telemetry import (
 from services.local_auth import VALID_ROLES, authenticate_user, register_user
 
 from services.synthetic import SyntheticConfig, synthesize_from_anonymized_text
+from hybrid_redaction.hybrid_redaction_app import create_app as create_hybrid_analyze_app
+from werkzeug.serving import make_server
 
 store  = get_store()
 engine = get_engine()
@@ -4128,6 +4130,9 @@ def on_menu_action(state, id, payload):
     if not _can_access_page(state, page):
         notify(state, "warning", "That page is not available for your current role.")
         page = "auth" if not _is_authenticated(state) else "dashboard"
+    if page == "analyze":
+        navigate(state, _hybrid_analyze_url(), tab="_self")
+        return
     navigate(state, page)
     if page == "auth":
         _sync_auth_ui(state)
@@ -6436,7 +6441,7 @@ def on_ui_demo_refresh(state):
 
 
 def on_dash_go_analyze(state):
-    navigate(state, "analyze")
+    navigate(state, _hybrid_analyze_url(), tab="_self")
     _refresh_sessions(state)
 
 
@@ -6703,6 +6708,62 @@ def on_dash_seed_demo(state):
         notify(state, "success", f"Demo session generated ({session.id[:8]}).")
 
 
+
+# ── Integrated Hybrid Analyze server ──────────────────────────────────────────
+_HYBRID_SERVER = None
+_HYBRID_SERVER_THREAD = None
+_HYBRID_SERVER_LOCK = Lock()
+
+
+def _hybrid_analyze_url() -> str:
+    host = (os.environ.get("ANON_HYBRID_HOST", "127.0.0.1") or "127.0.0.1").strip() or "127.0.0.1"
+    port = (os.environ.get("ANON_HYBRID_PORT", "5052") or "5052").strip() or "5052"
+    return f"http://{host}:{port}/"
+
+
+def _start_hybrid_analyze_server() -> None:
+    global _HYBRID_SERVER, _HYBRID_SERVER_THREAD
+    with _HYBRID_SERVER_LOCK:
+        if _HYBRID_SERVER_THREAD is not None:
+            return
+
+        host = (os.environ.get("ANON_HYBRID_HOST", "127.0.0.1") or "127.0.0.1").strip() or "127.0.0.1"
+        raw_port = (os.environ.get("ANON_HYBRID_PORT", "5052") or "5052").strip() or "5052"
+        try:
+            port = int(raw_port)
+        except ValueError:
+            port = 5052
+
+        hybrid_app = create_hybrid_analyze_app(url_prefix="")
+
+        try:
+            server = make_server(host, port, hybrid_app, threaded=True)
+        except OSError as exc:
+            _log.warning("[HybridAnalyze] Could not start hybrid server on %s:%s (%s).", host, port, exc)
+            return
+
+        thread = Thread(target=server.serve_forever, daemon=True, name="HybridAnalyzeServer")
+        thread.start()
+        _HYBRID_SERVER = server
+        _HYBRID_SERVER_THREAD = thread
+        _log.info("[HybridAnalyze] Hybrid Analyze server started on http://%s:%s", host, port)
+
+
+def _stop_hybrid_analyze_server() -> None:
+    global _HYBRID_SERVER, _HYBRID_SERVER_THREAD
+    with _HYBRID_SERVER_LOCK:
+        if _HYBRID_SERVER is not None:
+            try:
+                _HYBRID_SERVER.shutdown()
+            except Exception:
+                pass
+        _HYBRID_SERVER = None
+        _HYBRID_SERVER_THREAD = None
+
+
+def on_open_hybrid_analyze(state, id=None, payload=None):
+    navigate(state, _hybrid_analyze_url(), tab="_self")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  PAGE DEFINITIONS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -6759,6 +6820,7 @@ def run_app():
             start_metrics_server(_metrics_port)
     except Exception as _tele_exc:
         _log.warning("[Telemetry] Failed to start metrics: %s", _tele_exc)
+    _start_hybrid_analyze_server()
     try:
         run_kwargs = dict(
             title="Anonymous Studio",
@@ -6814,6 +6876,7 @@ def run_app():
             else:
                 raise
     finally:
+        _stop_hybrid_analyze_server()
         if APP_CTX.event_processor is not None:
             try:
                 APP_CTX.event_processor.stop()
