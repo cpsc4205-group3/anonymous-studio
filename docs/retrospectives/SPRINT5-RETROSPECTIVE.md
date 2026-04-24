@@ -20,7 +20,7 @@ This sprint focused on security hardening, production readiness, and closing cri
 
 **Sakshi Patel:** This sprint focused on improving the usability and overall user experience of the application. I designed and developed a new hybrid redaction interface to simplify how users interact with the system. The new interface provides a cleaner layout with side-by-side input and output, making the redaction process more intuitive. I also worked on running the project locally, debugging setup issues, and ensuring both the main application and hybrid interface function correctly for demonstration purposes.
 
-**Elijah Jenkins:** [Summary]
+**Elijah Jenkins:** During Sprint 5, we strengthened authorization and compliance behavior in the app by enforcing OpenFGA checks at action time. We added authorization gates before sensitive operations such as attesting pipeline cards, exporting audit logs, and mutating pipeline/job state. We also made denial behavior explicit and user-visible through clear UI notifications, and we enforced a fail-closed approach so service errors or unavailable auth checks do not silently allow restricted actions.
 
 ---
 
@@ -59,7 +59,16 @@ This sprint focused on security hardening, production readiness, and closing cri
 - **Dual App Execution** — Configured and tested both the main Taipy application and hybrid interface to run simultaneously on different ports for demonstration
 - **Testing & Validation** — Tested redaction functionality to ensure the new interface correctly reflects backend processing and produces accurate results
 
-**Elijah Jenkins:** [Completed tasks]
+**Elijah Jenkins:**
+- Implemented service/client authorization checks through OpenFGA integration.
+- Added pre-check authorization on attestation actions before signing/storing.
+- Added pre-check authorization on audit export actions before download.
+- Added authorization enforcement on selected pipeline/job mutation actions.
+- Added clear denial messages in UI for unauthorized actions.
+- Enforced explicit failure handling (deny on errors/service unavailable).
+- Closed security gaps in authorization flow consistency.
+- Added/extended regression tests for authz deny and unauthenticated paths.
+
 
 ### Not Completed
 
@@ -81,7 +90,7 @@ Sprint 5 shifted from feature development to security hardening and production r
 
 **Diamond Hogans:** [Planning vs. reality]
 
-**Elijah Jenkins:** [Planning vs. reality]
+**Elijah Jenkins:** Our Sprint 5 plan was to complete security hardening and make authorization behavior consistent across sensitive workflows. In reality, we delivered the core objectives: authorization checks are now enforced in key mutation and export paths, denial outcomes are visible to users, and failure scenarios are fail-closed. We also spent additional effort on regression testing and integration cleanup, which improved reliability beyond the original scope.
 
 ### Contribution Distribution
 
@@ -90,7 +99,7 @@ Based on GitHub contributor data for this sprint:
 - **Carley Fant:** PR #123 review and merge (security fixes), PR #120 integration (notifications), PR #119 integration (dependency updates), 2 new documentation files (demo script + launch script), branch management for `feat-sprint-5`, retrospective documentation
 - **Diamond Hogans:** [Contribution summary]
 - **Sakshi Patel:** Hybrid redaction UI design and development, usability improvements, local environment setup and debugging, dual application execution, and system testing for final demo readiness
-- **Elijah Jenkins:** [Contribution summary]
+- **Elijah Jenkins:** I focused on Sprint 5 security and authorization improvements. I helped implement and verify OpenFGA enforcement for attestation, audit export, and selected pipeline/job actions; ensured denied and error states produce clear UI feedback; and supported testing/validation to confirm the system fails closed instead of allowing actions on auth failures.
 
 ---
 
@@ -145,8 +154,7 @@ Sprint 5 was about ensuring the system is actually production-ready, not just fe
 **Sakshi Patel:** 
 During this sprint, my main contribution was designing and implementing a new hybrid redaction interface to improve the usability of the application. I focused on creating a clean and simple layout where users can input text and view redacted results side by side, making the system more intuitive. I also worked on running the project locally and resolving technical issues to ensure both applications function correctly. In the future, I want to improve my debugging efficiency and gain a deeper understanding of how the system components are integrated.
 
-**Elijah Jenkins:** [2-4 sentences]
-
+**Elijah Jenkins:** Sprint 5 taught me that security and reliability are as important as feature delivery. By enforcing OpenFGA checks on attestation, audit export, and key mutation actions, we made system behavior safer and more predictable. I also learned the value of fail-closed design and clear user feedback when authorization is denied or unavailable. This sprint improved both the product’s trustworthiness and my confidence working across security, testing, and UI flows.
 ---
 
 ## Team Notes
