@@ -206,7 +206,7 @@ body,
 
 .taipy-navbar {
   background: var(--navbar-bg) !important;
-  background-image: url("images/nav-logo.svg") !important;
+  background-image: url("images/icons/nav-logo.svg") !important;
   background-repeat: no-repeat !important;
   background-position: 14px center !important;
   background-size: 18px 18px !important;
