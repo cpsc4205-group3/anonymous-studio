@@ -1,210 +1,156 @@
 # Anonymous Studio — De-Identified Data Pipelines
 
 **CPSC 4205 | Group 3 | Spring 2026**
-*Carley Fant · Sakshi Patel · Diamond Hogans · Elijah Jenkins*
+
+Anonymous Studio is a production-grade PII (Personally Identifiable Information) detection and anonymization platform. It processes structured data files (CSV/Excel) and free text through an enterprise NLP pipeline, tracking every job through a Kanban workflow with cryptographically signed compliance attestations and a tamper-resistant audit log.
 
 ---
 
-## Taipy Studio (Recommended)
+## Team Members
 
-Taipy Studio is a VS Code extension that makes building Taipy apps significantly faster. Install it before writing any new pages or modifying `core_config.py`.
-
-### What it gives you
-
-**Configuration Builder** — a point-and-click editor for taipy.core config files (`.toml`). Instead of manually writing DataNode, Task, and Scenario declarations, you build them visually and Taipy Studio generates the config. Opens in the VS Code Secondary Side Bar under "Taipy Configs".
-
-**GUI Helper** — IntelliSense inside the Taipy Markdown DSL (`<|...|component|prop=value|>`). As you type visual element properties in `.md` files or Python strings, it autocompletes component names, property names, and variable references. Also includes a variable explorer and code navigation.
-
-### Install
-
-1. Make sure Taipy 3.0+ is installed in your venv (it is — `requirements.txt` pins `taipy>=3.1.0`)
-2. Open VS Code → Extensions (`Ctrl+Shift+X`) → search **"Taipy"**
-3. Install **Taipy Studio** — it automatically pulls in both sub-extensions
-
-> Taipy Studio 2.0+ is required for Taipy 3.x. If you see a 1.x version in the marketplace, make sure you select 2.0 or later.
-
-### Relevance to this project
-
-| Taipy Studio feature | Where it helps in Anonymous Studio |
-|---------------------|------------------------------------|
-| Config Builder | Editing DataNodes / Tasks in `core_config.py` visually |
-| GUI Helper IntelliSense | Writing page strings (`DASH`, `JOBS`, `PIPELINE`, etc.) in `app.py` |
-| Variable explorer | Seeing all reactive state variables without reading the full file |
-| `.toml` config view | If you migrate from inline `Config.configure_*` calls to a `.toml` file |
-
-### Migrating to a `.toml` config (optional)
-
-Right now `core_config.py` declares everything in Python. Taipy also supports `.toml` configuration files, which the Config Builder edits visually. If you want to use the GUI for your DataNode and Scenario setup:
-
-```bash
-# Export current config to toml (run once inside the venv)
-python -c "from core_config import *; from taipy import Config; Config.export('config.toml')"
-```
-
-Then open `config.toml` in VS Code — Taipy Studio will show it in the Taipy Configs panel.
+| Name | Role | GitHub |
+|------|------|--------|
+| Carley Fant | Project Lead, Backend & Security | [@51nk0r5w1m](https://github.com/51nk0r5w1m) |
+| Sakshi Patel | UI/UX Developer | [@Sakshi2131](https://github.com/Sakshi2131) |
+| Elijah Jenkins | Authorization & Security | [@ejenkins0113](https://github.com/ejenkins0113) |
 
 ---
 
-```ini
-┌─────────────────────────────────────────────────────────┐
-│  Taipy GUI  (app.py)                                    │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐    │
-│  │Dashboard │ │Upload/   │ │Pipeline  │ │Schedule/ │    │
-│  │          │ │Jobs      │ │Kanban    │ │Audit     │    │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘    │
-└───────┼────────────┼────────────┼────────────┼──────────┘
-        │            │ invoke_    │            │
-        │            │ long_      │            │
-        ▼            ▼ callback   ▼            ▼
-┌───────────────────────────────────────────────────────┐
-│  taipy.core  (core_config.py)                         │
-│                                                       │
-│  DataNode: raw_input  ──┐                             │
-│  DataNode: job_config ──┤──► Task: anonymize_task     │
-│                          │      │                     │
-│  DataNode: anon_output ◄─┤      └── tasks.py          │
-│  DataNode: job_stats   ◄─┘          run_pii_          │
-│                                     anonymization()   │
-│  Scenario: pii_pipeline                               │
-│  Orchestrator (development | standalone)              │
-└───────────────────────────────────────────────────────┘
-        │
-        ▼
-┌──────────────────────────┐
-│  pii_engine.py           │
-│  Presidio Analyzer       │
-│  + AnonymizerEngine      │
-│  (offline spaCy, no net) │
-└──────────────────────────┘
-```
+## Technology Stack
 
-## How Background Jobs Work
-
-1. **User uploads** a CSV/Excel file on the Jobs page
-2. __`invoke_long_callback`__ fires — the GUI stays fully responsive
-3. The callback thread calls __`cc.submit_job(df, config)`__
-4. `submit_job` creates a fresh __taipy.core Scenario__, writes the two input DataNodes (`raw_input`, `job_config`), and calls `tc.submit(scenario)`
-5. The Orchestrator picks up the job and runs __`run_pii_anonymization`__ (in `tasks.py`):
-
-   - Auto-detects text/PII columns
-   - Processes in configurable chunks (default 500 rows)
-   - Writes per-chunk progress to __`PROGRESS_REGISTRY`__ dict
-   - Returns `(anonymized_df, stats)` → written to output DataNodes
-
-6. The GUI polls __`PROGRESS_REGISTRY`__ when the user clicks "Refresh Progress"
-7. On completion, results load into the preview table; the linked Kanban card auto-advances to **Review**
-
-### Switching to True Parallel Workers (Production)
-
-```bash
-export ANON_MODE=standalone
-export ANON_WORKERS=8
-export ANON_RAW_INPUT_BACKEND=mongo
-export ANON_MONGO_URI=mongodb://localhost:27017/anon_studio
-export ANON_MONGO_WRITE_BATCH=5000
-taipy run main.py
-```
-
-No code changes needed — `core_config.py` reads the env vars.  
-`ANON_RAW_INPUT_BACKEND=auto` also works (it resolves to `mongo` in standalone).
-
-### Current Mode and Defaults
-
-- `ANON_MODE` supports:
-
-   - `development` (default)
-   - `standalone`
-
-- If `ANON_MODE` is not set in `.env` or your shell, the app runs in `development`.
-- Source of truth: `MODE = os.environ.get("ANON_MODE", "development")` in `core_config.py`.
-
-Quick check:
-
-```bash
-echo "${ANON_MODE:-development}"
-```
+| Category | Technology |
+|----------|-----------|
+| **Language** | Python 3.9–3.12 |
+| **GUI Framework** | [Taipy](https://www.taipy.io/) 3.1+ (GUI + Core orchestration) |
+| **NLP / PII Detection** | [Microsoft Presidio](https://microsoft.github.io/presidio/) Analyzer + Anonymizer |
+| **NER Model** | [spaCy](https://spacy.io/) `en_core_web_lg` (with blank regex fallback) |
+| **Data Processing** | Pandas 2.x; Dask (optional, >250K rows) |
+| **Database** | MongoDB (production persistence); DuckDB (analytics alternative) |
+| **Authorization** | [OpenFGA](https://openfga.dev/) fine-grained authorization |
+| **Authentication** | Auth0 JWT (REST API); oauth2-proxy + nginx (GUI proxy) |
+| **Telemetry** | Prometheus metrics + Grafana dashboards |
+| **REST API** | Taipy REST + FastAPI |
+| **Synthetic Data** | OpenAI / Azure OpenAI; Faker |
+| **Deployment** | Docker Compose (auth proxy + OpenFGA stack) |
+| **Testing** | pytest (22 test modules, 82+ tests) |
 
 ---
 
-## Pages
+## Project Objectives Assessment
 
-| Page | Description |
-|------|-------------|
-| **Dashboard** | Live job counts, pipeline status, upcoming reviews, recent audit |
-| **PII Text** | Inline text analysis — highlights + anonymizes without file upload |
-| **Upload & Jobs** | Submit large CSV/Excel as background jobs; progress bar; result preview + download |
-| **Pipeline** | Kanban board (Backlog → In Progress → Review → Done) linked to job status |
-| **Schedule** | Book and track PII review appointments, linked to pipeline cards |
-| **Audit Log** | Filterable immutable log of every system and user action |
+The following objectives are drawn from the original project proposal to rebuild the Presidio/Streamlit proof-of-concept as a production-ready, enterprise-grade anonymization platform.
 
-> **📊 Feature Status:** See [`docs/feature-parity.md`](docs/feature-parity.md) for a complete comparison of v2 vs. original PoC features, including what's implemented, what's in progress, and what's still in backlog.
+### Objective 1: Migrate PII detection PoC from Streamlit to a production-ready Taipy application
+
+**Status:** Met
+
+The original Streamlit proof-of-concept was fully rebuilt using Taipy 3.1, with all original detection capabilities preserved and extended. The new application supports the same entity types (17 total), operators, threshold controls, allowlist/denylist configuration, and highlighted output — while adding Taipy Core orchestration, background job execution, and reactive state management. Feature parity tracking reached 92% (11/12 PoC features), with the remaining item (encrypt operator key management) partially implemented on the backend.
+
+### Objective 2: Implement batch processing for large CSV and Excel files
+
+**Status:** Met
+
+The Batch Jobs page supports uploading CSV and Excel files (up to 500 MB) as non-blocking background jobs orchestrated by Taipy Core. Jobs run in configurable chunks (default 500 rows), report real-time progress through a polling registry, and automatically advance linked Kanban cards on completion. For very large datasets, an optional Dask compute backend handles files exceeding 250,000 rows. Stress testing validated 300,000+ row jobs and confirmed P95 response times of ~6ms for interactive routes.
+
+### Objective 3: Build a Kanban pipeline management system for tracking anonymization tasks
+
+**Status:** Met
+
+The Pipeline page implements a full Kanban board with four columns (Backlog → In Progress → Review → Done). Cards are automatically created when batch jobs are submitted and advance through the board as jobs complete. Cards support manual editing, priority/label assignment, and compliance attestation with Ed25519 cryptographic signatures. Both CSV and JSON export of pipeline data are available for compliance documentation.
+
+### Objective 4: Implement persistent storage with a pluggable backend architecture
+
+**Status:** Met
+
+The `store/` package provides a backend-agnostic interface (`StoreBase`) with three pluggable implementations: in-memory (default, for development), MongoDB (`MongoStore`), and DuckDB (`DuckDBStore`). The backend is switchable at runtime via the Store Settings dialog or `ANON_STORE_BACKEND` environment variable with no code changes required. MongoDB collections are indexed for audit log queries, and the Taipy Core DataNode backend is separately configurable (`ANON_RAW_INPUT_BACKEND`) for large job payloads.
+
+### Objective 5: Create a comprehensive, tamper-resistant audit log for compliance
+
+**Status:** Met
+
+Every user and system action is logged to an immutable audit trail (MongoDB capped collection or in-memory equivalent). The Audit Log page provides a filterable, searchable view of all events with export to CSV and JSON. Compliance attestations are recorded with Ed25519 signatures and can be verified offline. All export operations themselves are logged to prevent audit bypass.
+
+### Objective 6: Build a REST API for programmatic access to PII detection
+
+**Status:** Met
+
+A separate REST entrypoint (`rest_main.py`) exposes Taipy REST endpoints with optional Auth0 JWT authentication. API endpoints support PII detection, anonymization, and pipeline CRUD operations. Auth0 JWT validation (`services/auth0_rest.py`) is configurable via environment variables and disabled by default to keep local development simple. Swagger/OpenAPI documentation is auto-generated by Taipy REST.
+
+### Objective 7: Implement fine-grained authorization and authentication
+
+**Status:** Partially Met
+
+OpenFGA fine-grained authorization was implemented for sensitive operations: attestation of pipeline cards (`can_attest`), audit log exports (`can_export`), and key pipeline/job mutations. Authorization checks are enforced at action time with fail-closed behavior — service errors deny rather than allow. An Auth0 JWT proxy stack (`deploy/auth-proxy/`) provides OIDC login for the GUI. However, full role-based user registration and login within the application UI (card-013) was not implemented; authentication remains proxy-based rather than in-app, which is appropriate for a course demo but would need to be extended for a production multi-user deployment.
+
+### Objective 8: Enable production deployment with monitoring and container orchestration
+
+**Status:** Partially Met
+
+Docker Compose stacks are provided for the Auth0 proxy (`deploy/auth-proxy/`) and OpenFGA authorization server (`deploy/openfga/`). Prometheus metrics are exposed via `services/telemetry.py` and a Grafana dashboard is included in `deploy/grafana/`. A `Makefile` provides one-command startup for each stack. However, the application itself was not deployed to a cloud environment during the semester — all demonstrations ran locally. A production deployment to a cloud provider with a CI/CD pipeline remains as future work.
 
 ---
 
-## Getting Started
+## Installation Instructions
 
-### 1. Clone the repo
+### Prerequisites
+
+- **Python 3.9, 3.10, 3.11, or 3.12** — Python 3.13+ is **not supported** with Taipy 3.x
+- **Docker** (optional) — required only for MongoDB, OpenFGA, or auth proxy stacks
+- **Git**
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/cpsc4205-group3/anonymous-studio.git
 cd anonymous-studio
 ```
 
-### 2. Check your Python version
+### 2. Create and activate a virtual environment
 
 ```bash
-python --version
-```
-
-**You need Python 3.9, 3.10, 3.11, or 3.12.** Python 3.13+ is not supported with this Taipy range (`taipy>=3.1.0,<4.2`) and install/runtime will fail.
-
-If you have only Python 3.13+, install 3.12 from [python.org](https://python.org) and use it explicitly in the next step.
-
-### 3. Create and activate a virtual environment
-
-```bash
-# Use python3.12 explicitly to avoid picking up 3.14 if both are installed
+# Use python3.12 explicitly if multiple versions are installed
 python3.12 -m venv .venv
 
-# Activate — run this every time you open a new terminal
-source .venv/bin/activate        # Mac / Linux
+source .venv/bin/activate        # macOS / Linux
 .venv\Scripts\activate           # Windows
 ```
 
-You'll see `(.venv)` at the start of your prompt when it's active. Run `python --version` inside the venv to confirm it shows 3.12.x.
+Confirm the version: `python --version` should show `3.12.x`.
 
-### 4. Install dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Download the spaCy NER model (recommended)
-
-Run this **while the venv is active** so the model installs into `.venv` and not system Python.
+### 4. Download the spaCy NER model (recommended)
 
 ```bash
 python -m spacy download en_core_web_lg
 ```
 
-This enables detection of free-text entity types: `PERSON`, `LOCATION`, and `ORGANIZATION`. Without it the app still works but will only detect structured PII (emails, SSNs, phone numbers, credit cards, etc.).
+This enables detection of `PERSON`, `LOCATION`, and `ORGANIZATION` entity types via Named Entity Recognition. Without it, the app falls back to regex-only detection and shows a warning banner. Skip this step if you are offline — the fallback works automatically.
 
-In **Analyze Text**, use **Settings → NLP model** to switch runtime model mode:
+### 5. Configure environment variables (optional)
 
-- `auto` (default, best available installed model)
-- `en_core_web_lg`
-- `en_core_web_md`
-- `en_core_web_sm`
-- `en_core_web_trf`
-- `blank` (regex-only fallback)
+```bash
+cp .env.example .env
+# Edit .env as needed — all values are optional for local development
+```
 
-In **Batch Jobs**, use **Advanced Options → NLP model for this job** to pick the model per run (matches the Streamlit PoC workflow).
+Key variables for local use:
 
-For standalone multi-worker runs, set `SPACY_MODEL` before startup so every worker resolves the same model.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANON_MODE` | `development` | `development` (default) or `standalone` (parallel workers) |
+| `ANON_STORE_BACKEND` | `memory` | `memory`, `mongo`, or `auto` |
+| `MONGODB_URI` | *(unset)* | MongoDB connection string (needed only for `mongo` backend) |
+| `ANON_GUI_DEBUG` | `0` | Set to `1` for debug mode |
+| `ANON_GUI_USE_RELOADER` | `0` | Set to `1` for hot reload during development |
 
-> **Can't download right now?** Skip this step. The app falls back to a blank model automatically and shows a warning banner in the UI.
+No environment configuration is needed to run the app in development mode — all defaults work out of the box.
 
-### 6. Run
+### 6. Run the application
 
 ```bash
 taipy run main.py
@@ -212,466 +158,127 @@ taipy run main.py
 
 Open **http://localhost:5000** in your browser.
 
-If your shell does not resolve `taipy`, run:
+If `taipy` is not on your PATH:
 
 ```bash
 python -m taipy run main.py
 ```
 
-### 6.1 Auto-refresh during development
-
-Taipy CLI supports hot-reload flags:
-
-- `--use-reloader` / `--no-reloader`
-- `--debug` / `--no-debug`
-
-This repo reads these from environment variables in `app.py`:
-
-- `ANON_GUI_USE_RELOADER=1` enables hot reload (preferred)
-- `ANON_GUI_DEBUG=1` enables debug mode (preferred)
-- Backward-compatible aliases are also supported: `TAIPY_USE_RELOADER`, `TAIPY_DEBUG`
-
-Defaults are off (`0`) for stable production behavior, so restart is required unless you enable them.
-
-Example (development only):
-
-```bash
-export ANON_GUI_USE_RELOADER=1
-export ANON_GUI_DEBUG=1
-taipy run main.py
-```
-
-### 7. Add to `.gitignore`
-
-```sh
-.venv/
-__pycache__/
-*.pyc
-user_data/
-/tmp/anon_studio_blank_en/
-```
-
-`user_data/` is where taipy.core writes DataNode pickles (job inputs and outputs). `/tmp/anon_studio_blank_en/` is the blank spaCy model fallback. Neither should be committed.
-
 ---
 
-### Optional: real MongoDB
+## Usage Instructions
 
-Mongo can be used for both:
+### Pages Overview
 
-1. Persistent app store (cards, appointments, audit): set `ANON_STORE_BACKEND=mongo` and `MONGODB_URI`
-2. Raw input DataNode backend for standalone workers: set `ANON_RAW_INPUT_BACKEND=mongo` and `ANON_MONGO_URI` (or `ANON_MONGO_DB` + host fields)
+| Page | Description |
+|------|-------------|
+| **Dashboard** | Live job counts, pipeline status, service health, upcoming reviews, recent audit entries |
+| **Analyze Text** | Interactive PII detection — paste text, adjust confidence threshold, choose operator, view highlighted results and entity table |
+| **Batch Jobs** | Upload CSV/Excel files as background jobs with real-time progress, result preview, and download |
+| **Pipeline** | Kanban board (Backlog → In Progress → Review → Done) linked to batch job status; supports attestation and export |
+| **Schedule** | Book and manage compliance review appointments linked to pipeline cards |
+| **Audit Log** | Filterable, exportable immutable log of every system and user action |
+
+### Common Workflows
+
+**Analyze a single document:**
+1. Go to **Analyze Text** → paste text into the input box
+2. Select entity types, confidence threshold, and anonymization operator
+3. Click **Analyze** — highlighted results appear immediately
+4. Use **Allowlist/Denylist** fields to fine-tune detection
+
+**Process a CSV file:**
+1. Go to **Batch Jobs** → click **Upload File**
+2. Select your CSV or Excel file (up to 500 MB)
+3. Configure chunk size and NLP model in **Advanced Options** if needed
+4. Click **Submit Job** — progress updates in real time
+5. When complete, click **Download Results** to get the anonymized CSV
+
+**Attest a completed job:**
+1. Go to **Pipeline** — find the card in the **Review** column
+2. Click **Attest** — sign with Ed25519 cryptographic signature
+3. Card advances to **Done**; attestation recorded in the audit log
+
+### Switching to MongoDB persistence
 
 ```bash
+# Start a local MongoDB instance (Docker required)
+docker run -d -p 27017:27017 mongo:7
+
+# Set environment variables
 export ANON_STORE_BACKEND=mongo
 export MONGODB_URI=mongodb://localhost:27017/anon_studio
-export ANON_RAW_INPUT_BACKEND=mongo
-export ANON_MONGO_URI=mongodb://localhost:27017/anon_studio
-export ANON_MONGO_WRITE_BATCH=5000
-```
 
-### Where Mongo DataNode Connects (Taipy Core)
-
-If you are switching to Mongo mode and asking "where do I connect the DataNode?", the connection is configured in `taipy.core` (not in the UI store settings):
-
-- Connection parsing: `core_config.py::_mongo_config_from_env()`
-
-   - Reads `ANON_MONGO_URI` (or `MONGODB_URI`) and fallback fields like `ANON_MONGO_DB`, `ANON_MONGO_HOST`, `ANON_MONGO_PORT`.
-
-- DataNode type selection: `core_config.py::_configure_raw_input_data_node()`
-
-   - Uses `ANON_RAW_INPUT_BACKEND` (`auto | memory | mongo | pickle`).
-   - In `development`, `auto -> memory`; in `standalone`, `auto -> mongo`.
-
-- Runtime writes: `core_config.py::submit_job()`
-
-   - For Mongo backend, raw input is converted to Mongo documents and written in batches (`ANON_MONGO_WRITE_BATCH`) via `write()` + `append()`.
-
-Important separation:
-
-- `ANON_STORE_BACKEND=mongo` configures the app's operational store (cards/audit/schedule).
-- `ANON_RAW_INPUT_BACKEND=mongo` configures Taipy `raw_input` DataNode persistence for job input payloads.
-
----
-
-## Auth0 Proxy Starter (GUI + REST)
-
-For a lightweight Auth0 integration (without full BFF/KrakenD), use:
-
-- `oauth2-proxy` for OIDC login/session
-- `nginx` for route protection and forwarding
-- optional `redis` for shared session storage
-
-Starter files:
-
-- `deploy/auth-proxy/docker-compose.yml`
-- `deploy/auth-proxy/nginx.conf`
-- `deploy/auth-proxy/.env.auth-proxy.example`
-- `deploy/auth-proxy/README.md`
-
-Quick start:
-
-```bash
-cp deploy/auth-proxy/.env.auth-proxy.example deploy/auth-proxy/.env.auth-proxy
-make proxy-cookie-secret   # paste into OAUTH2_PROXY_COOKIE_SECRET
-
-# Terminal A (GUI)
-taipy run main.py
-
-# Terminal B (REST on port 5001)
-TAIPY_PORT=5001 taipy run rest_main.py
-
-# Terminal C (auth proxy)
-make auth-proxy-up
-```
-
-Open `http://localhost:8080`.
-
-Stop:
-
-```bash
-make auth-proxy-down
-```
-
-### Direct Auth0 JWT Auth for REST (optional)
-
-If you prefer token validation inside `rest_main.py` (instead of a proxy-only model),
-set these env vars:
-
-```bash
-ANON_AUTH_ENABLED=1
-AUTH0_DOMAIN=your-tenant.us.auth0.com
-AUTH0_API_AUDIENCE=https://anonymous-studio-api
-```
-
-Optional:
-
-```bash
-# Defaults to RS256
-ANON_AUTH_JWT_ALGORITHMS=RS256
-# Space/comma separated scopes required for every REST request
-ANON_AUTH_REQUIRED_SCOPES=read:jobs
-# Keep specific routes open (for probes, etc.)
-ANON_AUTH_EXEMPT_PATHS=/healthz
-```
-
-Then run:
-
-```bash
-TAIPY_PORT=5001 taipy run rest_main.py
-```
-
-By default (`ANON_AUTH_ENABLED=0`), no token is required, which keeps local development flow unchanged.
-
-### Local GUI break-glass identity
-
-When the Auth0 proxy is unavailable during local development, you can inject a
-local GUI identity instead of leaving the app permanently unauthenticated:
-
-```bash
-ANON_MODE=development
-ANON_BREAK_GLASS_ENABLED=1
-ANON_BREAK_GLASS_USER=carley
-ANON_BREAK_GLASS_EMAIL=carley@example.com
-ANON_BREAK_GLASS_GROUPS=admin,compliance
 taipy run main.py
 ```
 
-Safety rails:
-
-- disabled by default
-- honored only when `ANON_MODE=development`
-- honored only for loopback requests (`127.0.0.1` / `::1`)
-- surfaced in the UI as auth source `break_glass`
-
-Use it only for local/dev recovery when the auth proxy is down.
+Alternatively, click the **gear icon** in the top banner → Store Settings to switch without restarting.
 
 ---
 
-## Large Dataset + Mongo Runbook
+## Known Issues and Future Enhancements
 
-### Backend Matrix
+### Known Issues
 
-| Environment | `ANON_MODE` | `ANON_RAW_INPUT_BACKEND` | `raw_input` DataNode behavior |
-|---|---|---|---|
-| Local dev | `development` | `auto` (default) | In-memory (no raw-input persistence across restart) |
-| Production | `standalone` | `auto` | Mongo-backed collection (persistent, worker-safe) |
-| Explicit Mongo | any | `mongo` | Mongo-backed collection |
+- **`app.py` is monolithic** (5,500+ lines) — callbacks, state variables, and page logic are co-located, making the file difficult to navigate. A refactor into separate service modules is planned.
+- **N+1 store queries on dashboard refresh** — `_refresh_dashboard()` issues 60+ individual store calls per refresh cycle. A 5-second TTL cache mitigates this but does not eliminate it.
+- **No in-app user login** — Authentication is handled by an external oauth2-proxy. Users cannot register or log in directly within the application UI.
+- **Scheduler race condition** — The background appointment scheduler writes to a shared dict without a mutex (see `scheduler.py:47-49`). Safe for single-process development mode but should be addressed before multi-worker deployment.
+- **Encrypt operator UI incomplete** — The Presidio backend supports AES encryption/decryption, but the UI operator selector does not yet expose the `encrypt` option or key input field.
 
-### Data Node Explorer (what you should see)
+### Features We Would Add With More Time
 
-When `pii_pipeline` is pinned in Taipy Data Node Explorer, these nodes are expected:
-
-- `raw_input`
-- `job_config`
-- `anon_output`
-- `job_stats`
-
-`raw_input` will show large uploaded datasets. For large jobs with Mongo backend, writes are batched using `ANON_MONGO_WRITE_BATCH` to reduce memory spikes.
-
-If the explorer shows `Pinned on ???`:
-
-- No scenario is pinned yet, or no scenario has been created in this session.
-- Submit one job from __Batch Jobs__ to create a `pii_pipeline` scenario.
-- In Data Node Explorer, pin `pii_pipeline`, then enable __Pinned only__ if you want a filtered view.
-
-### Raw Input DataNode — UI controls
-
-In the **Jobs page → Advanced Options → Raw Input DataNode (MongoDB)** section:
-
-| Control | What it does |
-|---------|-------------|
-| Status badge | Shows the resolved backend (`In Memory`, `Mongo`, `Pickle`) and env var context |
-| Restart note | Reminds that `ANON_RAW_INPUT_BACKEND` is read at startup — backend changes require a restart |
-| __MongoDB write batch slider__ | Sets the number of documents per MongoDB write (`500`–`50,000`, default `5,000`). Applied to `core_config.MONGO_WRITE_BATCH` in the background thread before the DataNode write. |
-
-The write batch value is per-job — you can lower it for very large uploads to reduce memory pressure without restarting.
-
-### Tuning for very large files
-
-Use these settings first:
-
-```bash
-export ANON_MODE=standalone
-export ANON_WORKERS=8
-export ANON_RAW_INPUT_BACKEND=mongo
-export ANON_MONGO_URI=mongodb://localhost:27017/anon_studio
-export ANON_MONGO_WRITE_BATCH=5000   # env var default; overridable per-job in UI
-```
-
-Then in the **Jobs page → Advanced Options**:
-
-- **Chunk size (rows)**: higher for throughput (`2000`–`5000`), lower if you see memory pressure (`500`–`1000`).
-- **MongoDB write batch**: lower (`1000`–`2000`) for very large uploads to avoid OOM on the DataNode write.
-- **Compute backend**: `auto` (Dask when row count exceeds threshold) or `dask` to force Dask partitions.
-
-Optional Dask compute backend for very large jobs:
-
-```bash
-pip install "dask[dataframe]>=2024.8.0"
-export ANON_JOB_COMPUTE_BACKEND=auto   # auto | pandas | dask
-export ANON_DASK_MIN_ROWS=250000       # auto-switch threshold
-```
-
-`auto` keeps pandas for small jobs and uses Dask partitions only when row count exceeds `ANON_DASK_MIN_ROWS`.
-
-CSV uploads now use a staged file-path pipeline into the Taipy task (instead of eager full DataFrame parsing in UI callbacks), so large CSV jobs can run with worker-side `dd.read_csv(...)` when Dask is enabled.
-
-Detailed runbook: `docs/large_dataset_stress.md`.
-
-One command quick check:
-
-```bash
-make stress
-```
-
-### Stress validation (current baseline)
-
-Latest run (March 5, 2026):
-
-- Route stress: `210` requests, `0` failures, `P95 6.04ms`, `P99 99.70ms`
-- Task stress: `300,000` DataFrame rows processed successfully
-- Mongo-shaped payload stress: `250,000` rows processed successfully
-- Full test suite: `82 passed`
-
-### Taipy troubleshooting references (official docs)
-
-- `invoke_long_callback` (periodic status updates): https://docs.taipy.io/en/latest/refmans/reference/pkg_taipy/pkg_gui/invoke_long_callback/
-- GUI callbacks guide: https://docs.taipy.io/en/latest/userman/gui/callbacks/
-- Mongo collection DataNode config: https://docs.taipy.io/en/latest/refmans/reference/pkg_taipy/pkg_core/Config/#taipy.Config.configure_mongo_collection_data_node
-- Core DataNode API (`write`, `append`, `read`): https://docs.taipy.io/en/latest/refmans/reference/pkg_taipy/pkg_core/pkg_data_node/DataNode/
+- **In-app RBAC (card-013)** — Full user registration, login, and role-based access control (Admin, Compliance Officer, Developer, Researcher) with hashed passwords stored in MongoDB.
+- **Compliance review notifications (card-014)** — Email or in-app notifications 24 hours before scheduled compliance review appointments, extending the existing scheduler.
+- **File attachments on pipeline cards (card-015)** — Attach anonymized output files directly to Kanban cards for streamlined compliance documentation packages.
+- **Image OCR PII detection (card-012)** — Accept PNG/JPG uploads, extract text via Tesseract OCR, and run Presidio on the extracted content.
+- **Encrypt operator key management** — Complete the partially-implemented encrypt operator with UI key input, environment-variable key storage, and a decrypt round-trip for reversible anonymization.
+- **Cloud deployment with CI/CD** — Deploy to a cloud provider (AWS ECS or GCP Cloud Run) with a GitHub Actions pipeline for automated testing and deployment.
+- **`app.py` refactor** — Split the monolithic application file into focused modules: `callbacks/`, `state/`, `ui/` to improve maintainability and enable unit testing of individual callbacks.
 
 ---
 
 ## File Structure
 
-The layout follows Taipy conventions: entrypoints and core modules live at the
-root so `taipy run main.py` resolves imports without extra packaging, while
-supporting logic is split into focused packages.
-
 ```
 anonymous-studio/
-│
-│  # ── Entrypoints ──────────────────────────────────────────────────────────
-├── main.py              Taipy CLI entrypoint (`taipy run main.py`)
-├── rest_main.py         Taipy REST API entrypoint (`taipy run rest_main.py`)
-├── app.py               GUI state variables, callbacks, and runtime wiring
-│
-│  # ── Taipy core pipeline ──────────────────────────────────────────────────
-├── core_config.py       DataNode / Task / Scenario configs + Orchestrator bootstrap
-├── config.toml          Mirror of core_config.py for the Taipy Studio VS Code extension
-├── tasks.py             run_pii_anonymization() — the function the Orchestrator executes
-├── scheduler.py         Background appointment scheduler (daemon thread)
-│
-│  # ── Domain logic ─────────────────────────────────────────────────────────
-├── pii_engine.py        Presidio Analyzer + Anonymizer wrapper; spaCy model resolution
-│
-│  # ── UI ───────────────────────────────────────────────────────────────────
-├── pages/               Taipy Markdown DSL page strings (one const per page)
-│   ├── __init__.py          Re-exports PAGES dict
-│   └── definitions.py       DASH, QT, JOBS, PIPELINE, SCHEDULE, AUDIT, UI_DEMO
-├── ui/
-│   └── theme.py             Plotly / Taipy stylekit constants and colour tokens
-├── app.css              Custom CSS overrides (taipy-* class selectors)
-├── images/              SVG icons used by the navigation menu
-│
-│  # ── Services ─────────────────────────────────────────────────────────────
-├── services/            Extracted business logic (keeps app.py manageable)
-│   ├── app_context.py       AppContext dataclass — runtime registries
-│   ├── attestation_crypto.py  File integrity hashing
-│   ├── auth0_rest.py        Auth0 JWT middleware for REST API
-│   ├── geo_signals.py       Geo-token normalisation helpers
-│   ├── job_progress.py      Progress read/write/clear (PROGRESS_REGISTRY bridge)
-│   ├── jobs.py              Job submission helpers
-│   ├── progress_snapshots.py  Durable progress snapshot storage
-│   ├── synthetic.py         OpenAI-based synthetic data generation
-│   └── telemetry.py         Optional telemetry hooks
-│
-│  # ── Data store ───────────────────────────────────────────────────────────
-├── store/               Backend-agnostic persistence (cards, audit, appointments)
-│   ├── __init__.py          get_store() factory + singleton
-│   ├── base.py              Abstract StoreBase interface
-│   ├── models.py            PipelineCard, Appointment, PIISession, AuditEntry
-│   ├── memory.py            In-memory implementation (default)
-│   ├── mongo.py             MongoDB implementation
-│   └── duckdb.py            DuckDB implementation
-│
-│  # ── Tests & scripts ──────────────────────────────────────────────────────
-├── tests/               pytest suite (test_pii_engine, test_store, …)
-├── scripts/             Utility scripts (key generation, stress testing, …)
-│
-│  # ── Deployment ───────────────────────────────────────────────────────────
+├── main.py              # Taipy CLI entrypoint
+├── rest_main.py         # REST API entrypoint
+├── app.py               # GUI state, callbacks, and runtime wiring
+├── core_config.py       # Taipy DataNode / Task / Scenario config
+├── tasks.py             # PII anonymization task (Orchestrator-executed)
+├── scheduler.py         # Background appointment scheduler
+├── pii_engine.py        # Presidio Analyzer + Anonymizer wrapper
+├── pages/
+│   └── definitions.py   # Taipy Markdown DSL page strings
+├── services/            # Auth, attestation, telemetry, job, progress services
+├── store/               # StoreBase interface + memory, MongoDB, DuckDB backends
+├── ui/                  # Plotly/Taipy theme helpers
 ├── deploy/
-│   ├── auth-proxy/          OAuth2-proxy + Docker Compose for auth
-│   └── grafana/             Grafana dashboards for monitoring
-│
-│  # ── Project config ───────────────────────────────────────────────────────
-├── requirements.txt     Python dependencies (taipy, presidio, spacy, …)
-├── Makefile             Stress tests, mongo-check, auth-proxy up/down
-├── pytest.ini           Pytest configuration
-├── .env.example         Sample environment variables
-├── .gitignore
-└── .taipyignore         Prevents Taipy's built-in server from exposing source files
-
-```
-
-### Why this layout works for Taipy
-
-| Convention | Rationale |
-|------------|-----------|
-| Root-level `app.py` + `main.py` | `taipy run main.py` expects the GUI module at the import root — no `src/` wrapper needed |
-| `pages/` package | Keeps Markdown DSL strings out of `app.py`; Taipy resolves bindings from the module where `Gui()` is created |
-| `core_config.py` + `config.toml` | Programmatic config is authoritative; TOML is a read-only mirror for Taipy Studio |
-| `store/` package | Separates data persistence from Taipy — `app.py` only calls `get_store()` public methods |
-| `services/` package | Extracts business logic from callbacks so `app.py` stays focused on state + UI |
-| `.taipyignore` | Blocks Taipy's static file server from exposing `.py`, `.toml`, `.env`, and internal dirs |
-
-
-## Entity Types Detected
-
-`EMAIL_ADDRESS` · `PHONE_NUMBER` · `CREDIT_CARD` · `US_SSN` · `US_PASSPORT`
-`US_DRIVER_LICENSE` · `US_ITIN` · `US_BANK_NUMBER` · `IP_ADDRESS` · `URL`
-`IBAN_CODE` · `DATE_TIME` · `LOCATION` · `PERSON` · `NRP` · `MEDICAL_LICENSE`
-
-## Anonymization Operators
-
-| Operator | Example output |
-|----------|---------------|
-| `replace` | `<EMAIL_ADDRESS>` |
-| `redact`  | _(text deleted)_ |
-| `mask`    | `********************` |
-| `hash`    | `a665a45920...` (SHA-256) |
-
-The `hash` operator uses **SHA-256 with salt `"anonymous-studio"`**. The same PII value always produces the same hash within this deployment, enabling cross-record correlation without exposing the original text.
-
----
-
-## Store Backend
-
-Two backends for operational data (pipeline cards, audit log, appointments, PII sessions):
-
-| Backend | When to use |
-|---------|-------------|
-| `memory` (default) | Development and demos — fast, no external dependency, resets on restart |
-| `mongo` | Persistent data across restarts |
-
-### Switching at runtime
-
-Click the **gear** in the top banner → Store Settings. Select **mongo**, enter a URI, click **Apply** — no restart needed.
-
-```sh
-mongodb://localhost:27017/anon_studio       # local
-mongodb+srv://user:pass@cluster/anon_studio # Atlas
-```
-
-The Store Settings dialog also includes a **Job Data Nodes** explorer so you can inspect Taipy DataNode contents (raw input, anonymized output, stats) without navigating to the Audit page.
-
-**Note:** The store backend (cards, audit, schedule) is separate from the Taipy DataNode backend (job I/O). See *Where Mongo DataNode Connects* above for DataNode configuration.
-
-### MongoDB connection fast-fail
-
-`MongoStore` sets `serverSelectionTimeoutMS=3000`. If the server is unreachable the dialog shows an error within ~3 seconds and reverts to in-memory (default was 30 s, making Apply appear frozen).
-
-### pymongo
-
-`pymongo[srv]>=4.7` is in `requirements.txt`. If missing, Store Settings shows:
-
-```sh
-pymongo is not installed. Run: pip install 'pymongo[srv]>=4.7'
+│   ├── auth-proxy/      # oauth2-proxy + nginx Docker Compose stack
+│   ├── openfga/         # OpenFGA authorization server stack
+│   └── grafana/         # Prometheus + Grafana monitoring stack
+├── tests/               # 22 pytest modules, 82+ tests
+├── docs/
+│   └── runbooks/        # deployment.md, spacy.md, store-utils.md
+├── images/
+│   └── icons/           # SVG nav icons (referenced by app.py and app.css)
+├── scripts/             # Utility and dev scripts
+├── requirements.txt
+├── Makefile
+└── .env.example
 ```
 
 ---
 
-## File Integrity Hash
-
-After uploading a CSV or Excel file the Jobs page shows the **SHA-256 of the original file bytes** beneath the filename:
-
-```sh
-filename.csv
-SHA-256  a3f8c2d1e4b7f9...
-```
-
-Verify locally before and after transfer to confirm the file was not altered:
+## Running Tests
 
 ```bash
-sha256sum filename.csv          # Linux / WSL
-shasum -a 256 filename.csv      # macOS
-CertUtil -hashfile filename.csv SHA256   # Windows
+# Run the full test suite
+pytest
+
+# Run a specific module
+pytest tests/test_pii_engine.py -v
 ```
 
----
-
-## Security
-
-See **[docs/security.md](docs/security.md)** for the full threat model, applied controls, and production hardening checklist.
-
-```bash
-
-```
-
-## Performance
-
-| Control | Status |
-|---------|--------|
-| Path traversal on CSV input | `ANON_UPLOAD_DIR` whitelist |
-| File upload size cap | 500 MB (`ANON_MAX_UPLOAD_MB`) |
-| MIME-type validation | Magic-byte check on xlsx/xls |
-| MongoDB query injection | Status / severity whitelists |
-| Exception details in browser | Sanitized; full trace server-side only |
-| Temp file permissions | `mode=0o700` |
-| Audit log tamper-resistance | MongoDB capped collection (append-only) |
-| Authentication | None — course demo, see security.md |
-
----
-
-```bash
-
-```
-
-See **[docs/performance.md](docs/performance.md)** for:
-
-- Benchmark reference numbers (interactive text, batch jobs, dashboard)
-- All applied optimizations with before/after code (OperatorConfig cache, denylist regex cache, `lru_cache` on model options, `store.stats()` rewrite, dashboard `list_sessions()` hoist, pipeline `list_cards()` elimination)
-- Tuning knobs (`ANON_JOB_COMPUTE_BACKEND`, `ANON_DASK_MIN_ROWS`, entity filtering, `fast=True`, score threshold)
-- spaCy model speed/accuracy tradeoff table
-- Known remaining bottlenecks and mitigations
+The test suite covers: PII engine, store backends (memory/Mongo/DuckDB), attestation crypto, Auth0 REST, OpenFGA authorization, export functionality, progress snapshots, and Taipy state smoke tests.

@@ -57,3 +57,12 @@ nohup.out
 screenshot_*.png
 toast_debug.png
 *-analyze.txt
+
+# Media / temp artifacts
+*.webm
+*.mp4
+temp_*.png
+README-*.md
+
+# Claude Code local configs (local-only)
+.claude/

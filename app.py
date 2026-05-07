@@ -311,7 +311,7 @@ def _is_authenticated(state) -> bool:
 
 def _menu_for_role(role: str, is_authenticated_flag: bool) -> List[tuple[str, Icon]]:
     if not is_authenticated_flag:
-        return [("auth", Icon("images/audit.svg", "Access"))]
+        return [("auth", Icon("images/icons/audit.svg", "Access"))]
     allowed_pages = [page for page, roles in PAGE_ROLE_RULES.items() if role in roles and page != "auth"]
     return [item for item in BASE_MENU_LOV if item[0] in allowed_pages]
 
@@ -446,18 +446,18 @@ if os.environ.get("ANON_MODE", "development") == "standalone":
 active_page = "dashboard"
 
 BASE_MENU_LOV = [
-    ("auth",      Icon("images/audit.svg",      "Access")),
-    ("dashboard", Icon("images/dashboard.svg", "Dashboard")),
-    ("analyze",   Icon("images/piitext.svg",   "Analyze Text")),
-    ("jobs",      Icon("images/jobs.svg",       "Batch Jobs")),
-    ("pipeline",  Icon("images/pipeline.svg",   "Pipeline")),
-    ("schedule",  Icon("images/schedule.svg",   "Reviews")),
-    ("audit",     Icon("images/audit.svg",      "Audit Log")),
-    ("telemetry", Icon("images/dashboard.svg",  "Telemetry")),
-    ("ui_demo",   Icon("images/dashboard.svg",  "UI")),
-    ("settings",  Icon("images/settings.svg",   "Settings")),
+    ("auth",      Icon("images/icons/audit.svg",      "Access")),
+    ("dashboard", Icon("images/icons/dashboard.svg", "Dashboard")),
+    ("analyze",   Icon("images/icons/piitext.svg",   "Analyze Text")),
+    ("jobs",      Icon("images/icons/jobs.svg",       "Batch Jobs")),
+    ("pipeline",  Icon("images/icons/pipeline.svg",   "Pipeline")),
+    ("schedule",  Icon("images/icons/schedule.svg",   "Reviews")),
+    ("audit",     Icon("images/icons/audit.svg",      "Audit Log")),
+    ("telemetry", Icon("images/icons/dashboard.svg",  "Telemetry")),
+    ("ui_demo",   Icon("images/icons/dashboard.svg",  "UI")),
+    ("settings",  Icon("images/icons/settings.svg",   "Settings")),
 ]
-menu_lov = [("auth", Icon("images/audit.svg", "Access"))]
+menu_lov = [("auth", Icon("images/icons/audit.svg", "Access"))]
 
 PAGE_ROLE_RULES: Dict[str, set[str]] = {
     "auth": set(VALID_ROLES),
