@@ -1,4 +1,5 @@
-# Anonymous Studio - De-Identified Data Pipelines
+# Anonymous Studio 
+>De-Identified Data Pipelines
 
 **CPSC 4205 | Group 3 | Spring 2026**
 
